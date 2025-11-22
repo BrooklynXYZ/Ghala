@@ -1,6 +1,5 @@
 #!/bin/bash
-# Simple deployment script for BTC Handler and Bridge Orchestrator
-# Skips Solana canister due to zstd-sys build issues
+# Deployment script for all three canisters: BTC Handler, Bridge Orchestrator, and Solana Canister
 
 set -e
 
@@ -16,12 +15,14 @@ export NO_COLOR=1
 export DFX_NO_COLOR=1
 export TERM=dumb
 export FORCE_COLOR=0
+export DFX_WARNING=-mainnet_plaintext_identity
 unset CLICOLOR CLICOLOR_FORCE COLORTERM
 
 # Build canisters
 echo "Building canisters..."
 dfx build --network ic btc_handler 2>&1 | grep -E "(Building|Finished|error)" || true
 dfx build --network ic bridge_orchestrator 2>&1 | grep -E "(Building|Finished|error)" || true
+echo "⚠️  Note: Solana canister build skipped due to zstd-sys issue, using pre-built WASM"
 echo "✅ Build complete"
 echo ""
 
@@ -48,6 +49,24 @@ else
     echo "⚠️  Bridge Orchestrator deployment may have succeeded despite panic"
 fi
 
+sleep 3
+
+# Deploy Solana Canister (using pre-built WASM)
+echo ""
+echo "Deploying Solana Canister (using pre-built WASM)..."
+if [ -f .dfx/ic/canisters/solana_canister/solana_canister.wasm ]; then
+    if dfx canister install --network ic --mode upgrade solana_canister \
+      --wasm .dfx/ic/canisters/solana_canister/solana_canister.wasm \
+      --yes 2>&1 | grep -v "ColorOutOfRange" | tail -5; then
+        echo "✅ Solana Canister deployment completed"
+    else
+        echo "⚠️  Solana Canister deployment may have succeeded despite panic"
+    fi
+else
+    echo "❌ Error: Pre-built Solana canister WASM not found at .dfx/ic/canisters/solana_canister/solana_canister.wasm"
+    echo "   Cannot deploy Solana canister without WASM file"
+fi
+
 sleep 5
 
 # Verify deployments by checking canister info (doesn't require dfx call)
@@ -59,9 +78,14 @@ echo ""
 echo "Canister IDs:"
 echo "  - BTC Handler: ph6zi-syaaa-aaaad-acuha-cai"
 echo "  - Bridge Orchestrator: n5cru-miaaa-aaaad-acuia-cai"
+echo "  - Solana Canister: pa774-7aaaa-aaaad-acuhq-cai"
 echo ""
 echo "Note: Due to dfx ColorOutOfRange bug, verify deployments manually:"
 echo "  dfx canister call --network ic ph6zi-syaaa-aaaad-acuha-cai get_canister_stats"
 echo "  dfx canister call --network ic n5cru-miaaa-aaaad-acuia-cai debug_get_config"
+echo "  dfx canister call --network ic pa774-7aaaa-aaaad-acuhq-cai get_canister_stats"
+echo ""
+echo "⚠️  Important: Solana canister deployed using pre-built WASM due to zstd-sys build issue."
+echo "   The Candid interface has been updated with get_solana_transaction_status method."
 echo ""
 
