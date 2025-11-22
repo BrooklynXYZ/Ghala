@@ -707,3 +707,6 @@ fn get_canister_stats() -> CanisterStats {
         total_addresses_generated: total_addresses,
     }
 }
+
+// Enable Candid export
+ic_cdk::export_candid!();

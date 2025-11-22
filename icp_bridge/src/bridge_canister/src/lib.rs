@@ -1471,3 +1471,6 @@ fn init() {}
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {}
+
+// Enable Candid export
+ic_cdk::export_candid!();
