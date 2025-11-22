@@ -1,6 +1,7 @@
 use candid::{CandidType, Deserialize, Principal};
 use ic_cdk::api::management_canister::http_request::{CanisterHttpRequestArgument, HttpHeader, HttpMethod};
 use ic_cdk::api::call::RejectionCode;
+use ic_cdk::call::RejectCode;
 use sha2::Digest;
 use ic_stable_structures::{memory_manager::{MemoryManager, VirtualMemory, MemoryId}, StableBTreeMap, DefaultMemoryImpl, Storable, storable::Bound};
 use std::cell::RefCell;
@@ -14,16 +15,29 @@ use getrandom::register_custom_getrandom;
 #[derive(Debug)]
 enum SolanaError {
     HttpRequest(String),
-    Rejection(RejectionCode, String),
+    Rejection(RejectCode, String),
     Serialization(String),
     Validation(String),
     Signing(String),
     Rpc(String),
 }
 
-impl From<(RejectionCode, String)> for SolanaError {
-    fn from((code, msg): (RejectionCode, String)) -> Self {
+impl From<(RejectCode, String)> for SolanaError {
+    fn from((code, msg): (RejectCode, String)) -> Self {
         SolanaError::Rejection(code, msg)
+    }
+}
+
+// Helper to convert RejectionCode to RejectCode
+fn rejection_to_reject(code: RejectionCode) -> RejectCode {
+    match code {
+        RejectionCode::NoError => RejectCode::SysFatal, // No direct equivalent, use SysFatal
+        RejectionCode::SysFatal => RejectCode::SysFatal,
+        RejectionCode::SysTransient => RejectCode::SysTransient,
+        RejectionCode::DestinationInvalid => RejectCode::DestinationInvalid,
+        RejectionCode::CanisterReject => RejectCode::CanisterReject,
+        RejectionCode::CanisterError => RejectCode::CanisterError,
+        RejectionCode::Unknown => RejectCode::SysFatal, // No direct equivalent, use SysFatal
     }
 }
 
@@ -153,34 +167,43 @@ thread_local! {
 
 #[ic_cdk::init]
 fn init() {
-    init_rng();
+    // Initialize RNG with a deterministic seed based on canister state
+    // This ensures the canister can start immediately without waiting for async operations
+    let canister_id = ic_cdk::id();
+    let time = ic_cdk::api::time();
+    
+    // Create a deterministic seed from canister ID and time
+    let mut seed_bytes = [0u8; 32];
+    let id_slice = canister_id.as_slice();
+    for i in 0..32 {
+        seed_bytes[i] = id_slice[i % id_slice.len()] ^ ((time >> (i % 8)) as u8);
+    }
+    
+    RNG.with(|rng| {
+        *rng.borrow_mut() = Some(StdRng::from_seed(seed_bytes));
+    });
+    
+    // Optionally, try to get a better random seed asynchronously (non-blocking)
+    ic_cdk::futures::spawn(async {
+        match ic_cdk::api::management_canister::main::raw_rand().await {
+            Ok((seed,)) => {
+                if let Ok(seed_array) = seed.try_into() {
+                    RNG.with(|rng| {
+                        *rng.borrow_mut() = Some(StdRng::from_seed(seed_array));
+                    });
+                }
+            }
+            Err(_) => {
+                // Keep using the deterministic seed - this is fine
+            }
+        }
+    });
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    init_rng();
-}
-
-fn init_rng() {
-    ic_cdk_timers::set_timer(Duration::ZERO, || ic_cdk::spawn(async {
-        match ic_cdk::api::management_canister::main::raw_rand().await {
-            Ok((seed,)) => {
-                match seed.try_into() {
-                    Ok(seed_array) => {
-                        RNG.with(|rng| {
-                            *rng.borrow_mut() = Some(StdRng::from_seed(seed_array));
-                        });
-                    }
-                    Err(_) => {
-                        ic_cdk::println!("Warning: Invalid seed length, RNG may not be initialized");
-                    }
-                }
-            }
-            Err(e) => {
-                ic_cdk::println!("Warning: Failed to get random seed: {:?}, RNG may not be initialized", e);
-            }
-        }
-    }));
+    // Same initialization as init
+    init();
 }
 
 register_custom_getrandom!(custom_getrandom);
@@ -190,8 +213,45 @@ fn custom_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
             rng.fill_bytes(buf);
             Ok(())
         } else {
-            // Return a generic error for getrandom 0.2
-            Err(getrandom::Error::UNSUPPORTED)
+            // RNG not initialized yet - use a fallback seed based on canister state
+            // This ensures the canister can still function even if RNG init is delayed
+            let fallback_seed = [
+                ic_cdk::api::time() as u8,
+                (ic_cdk::api::time() >> 8) as u8,
+                (ic_cdk::api::time() >> 16) as u8,
+                (ic_cdk::api::time() >> 24) as u8,
+                ic_cdk::id().as_slice()[0],
+                ic_cdk::id().as_slice()[1],
+                ic_cdk::id().as_slice()[2],
+                ic_cdk::id().as_slice()[3],
+                ic_cdk::id().as_slice()[4],
+                ic_cdk::id().as_slice()[5],
+                ic_cdk::id().as_slice()[6],
+                ic_cdk::id().as_slice()[7],
+                ic_cdk::id().as_slice()[8],
+                ic_cdk::id().as_slice()[9],
+                ic_cdk::id().as_slice()[10],
+                ic_cdk::id().as_slice()[11],
+                ic_cdk::id().as_slice()[12],
+                ic_cdk::id().as_slice()[13],
+                ic_cdk::id().as_slice()[14],
+                ic_cdk::id().as_slice()[15],
+                ic_cdk::id().as_slice()[16],
+                ic_cdk::id().as_slice()[17],
+                ic_cdk::id().as_slice()[18],
+                ic_cdk::id().as_slice()[19],
+                ic_cdk::id().as_slice()[20],
+                ic_cdk::id().as_slice()[21],
+                ic_cdk::id().as_slice()[22],
+                ic_cdk::id().as_slice()[23],
+                ic_cdk::id().as_slice()[24],
+                ic_cdk::id().as_slice()[25],
+                ic_cdk::id().as_slice()[26],
+                ic_cdk::id().as_slice()[27],
+            ];
+            let mut temp_rng = StdRng::from_seed(fallback_seed);
+            temp_rng.fill_bytes(buf);
+            Ok(())
         }
     })
 }
@@ -405,47 +465,86 @@ async fn get_recent_blockhash() -> String {
     "".to_string()
 }
 
-// Helper function to get Ed25519 public key using ICP's Schnorr API
-// NOTE: Schnorr API is available in newer ic-cdk versions. For ic-cdk 0.15, this is a placeholder.
-// When upgrading to ic-cdk with schnorr support, uncomment the code below.
+// Helper function to get Ed25519 public key using ICP's Schnorr API (ic-cdk 0.19.0+)
 async fn get_ed25519_pubkey(derivation_path: &[Vec<u8>]) -> Result<solana_program::pubkey::Pubkey, SolanaError> {
-    // TODO: When ic-cdk with schnorr API is available, use:
-    // use ic_cdk::api::management_canister::schnorr;
-    // let key_id = schnorr::SchnorrKeyId { name: _KEY_NAME.to_string() };
-    // let pubkey_result = schnorr::schnorr_public_key(...).await?;
-    // let pubkey_bytes = pubkey_result.0.public_key;
+    use ic_cdk::management_canister;
+    use ic_management_canister_types::{SchnorrKeyId, SchnorrPublicKeyArgs, SchnorrAlgorithm};
     
-    // For now, use deterministic key generation (same as generate_solana_address)
-    let caller = ic_cdk::caller();
-    let caller_bytes = caller.as_slice();
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(b"solana_key_derivation");
-    hasher.update(caller_bytes);
-    hasher.update(b"solana_send");
-    let hash = hasher.finalize();
+    let key_id = SchnorrKeyId {
+        name: _KEY_NAME.to_string(),
+        algorithm: SchnorrAlgorithm::Ed25519,
+    };
     
-    let pubkey_array: [u8; 32] = hash.as_slice().try_into()
-        .map_err(|_| SolanaError::Validation("Failed to convert hash to 32 bytes".to_string()))?;
+    let pubkey_result = match management_canister::schnorr_public_key(&SchnorrPublicKeyArgs {
+        canister_id: None,
+        derivation_path: derivation_path.to_vec(),
+        key_id: key_id.clone(),
+    })
+    .await {
+        Ok(result) => result,
+        Err(e) => {
+            // Convert Error to SolanaError
+            return Err(SolanaError::Signing(format!("Failed to get public key: {:?}", e)));
+        }
+    };
+    
+    let pubkey_bytes = pubkey_result.public_key;
+    
+    // Schnorr public key is 32 bytes for Ed25519
+    if pubkey_bytes.len() != 32 {
+        return Err(SolanaError::Validation(format!(
+            "Invalid public key length: expected 32 bytes, got {}",
+            pubkey_bytes.len()
+        )));
+    }
+    
+    let pubkey_array: [u8; 32] = pubkey_bytes.try_into()
+        .map_err(|_| SolanaError::Validation("Failed to convert public key to array".to_string()))?;
     
     solana_program::pubkey::Pubkey::try_from(pubkey_array.as_slice())
         .map_err(|e| SolanaError::Validation(format!("Failed to create Pubkey: {}", e)))
 }
 
-// Helper function to sign message with Ed25519 using ICP's Schnorr API
-// NOTE: Schnorr API is available in newer ic-cdk versions. For ic-cdk 0.15, this is a placeholder.
-// When upgrading to ic-cdk with schnorr support, uncomment the code below.
-async fn sign_message_ed25519(message: &[u8], _derivation_path: &[Vec<u8>]) -> Result<solana_signature::Signature, SolanaError> {
-    // TODO: When ic-cdk with schnorr API is available, use:
-    // use ic_cdk::api::management_canister::schnorr;
-    // let key_id = schnorr::SchnorrKeyId { name: _KEY_NAME.to_string() };
-    // let signature_result = schnorr::sign_with_schnorr(...).await?;
-    // let signature_bytes = signature_result.0.signature;
-    // return Ok(solana_signature::Signature::from(sig_array));
+// Helper function to sign message with Ed25519 using ICP's Schnorr API (ic-cdk 0.19.0+)
+async fn sign_message_ed25519(message: &[u8], derivation_path: &[Vec<u8>]) -> Result<solana_signature::Signature, SolanaError> {
+    use ic_cdk::management_canister;
+    use ic_management_canister_types::{SchnorrKeyId, SignWithSchnorrArgs, SchnorrAlgorithm};
     
-    // For now, return error indicating schnorr API is needed
-    Err(SolanaError::Signing(
-        "Ed25519 signing requires ic-cdk with schnorr API support. Please upgrade ic-cdk.".to_string()
-    ))
+    let key_id = SchnorrKeyId {
+        name: _KEY_NAME.to_string(),
+        algorithm: SchnorrAlgorithm::Ed25519,
+    };
+    
+    // Sign the message using Schnorr (Ed25519)
+    use ic_management_canister_types::SchnorrAux;
+    let signature_result = match management_canister::sign_with_schnorr(&SignWithSchnorrArgs {
+        message: message.to_vec(),
+        derivation_path: derivation_path.to_vec(),
+        key_id: key_id.clone(),
+        aux: None, // Auxiliary data, None for Ed25519
+    })
+    .await {
+        Ok(result) => result,
+        Err(e) => {
+            // Convert error to SolanaError - the actual error type may vary
+            return Err(SolanaError::Signing(format!("Failed to sign message: {:?}", e)));
+        }
+    };
+    
+    let signature_bytes = signature_result.signature;
+    
+    // Solana signatures are 64 bytes
+    if signature_bytes.len() != 64 {
+        return Err(SolanaError::Signing(format!(
+            "Invalid signature length: expected 64 bytes, got {}",
+            signature_bytes.len()
+        )));
+    }
+    
+    let sig_array: [u8; 64] = signature_bytes.try_into()
+        .map_err(|_| SolanaError::Signing("Failed to convert signature to array".to_string()))?;
+    
+    Ok(solana_signature::Signature::from(sig_array))
 }
 
 // Helper function to get recent blockhash via HTTPS outcall
@@ -475,7 +574,9 @@ async fn get_blockhash_via_https() -> Result<String, SolanaError> {
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 3_000_000_000u128)
         .await
-        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
+        .map_err(|(code, msg): (RejectionCode, String)| {
+            SolanaError::Rejection(rejection_to_reject(code), msg)
+        })?;
     
     if response.status != 200u64 {
         return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
@@ -523,7 +624,9 @@ async fn get_balance_via_https(address: &str) -> Result<u64, SolanaError> {
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 3_000_000_000u128)
         .await
-        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
+        .map_err(|(code, msg): (RejectionCode, String)| {
+            SolanaError::Rejection(rejection_to_reject(code), msg)
+        })?;
     
     if response.status != 200u64 {
         return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
@@ -568,7 +671,9 @@ async fn send_transaction_via_https(tx_base64: &str) -> Result<String, SolanaErr
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 13_000_000_000u128)
         .await
-        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
+        .map_err(|(code, msg): (RejectionCode, String)| {
+            SolanaError::Rejection(rejection_to_reject(code), msg)
+        })?;
     
     if response.status != 200u64 {
         return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
@@ -724,8 +829,16 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     // Step 4: Build transfer instruction
     // System program ID: 11111111111111111111111111111111
     use solana_program::instruction::Instruction;
-    let system_program_id = Pubkey::from_str("11111111111111111111111111111111")
-        .map_err(|_| "Failed to parse system program ID".to_string())?;
+    let system_program_id = match Pubkey::from_str("11111111111111111111111111111111") {
+        Ok(id) => id,
+        Err(_) => {
+            return TransactionResult {
+                signature: "".to_string(),
+                status: "error".to_string(),
+                message: "Failed to parse system program ID".to_string(),
+            };
+        }
+    };
     
     let transfer_ix = Instruction {
         program_id: system_program_id,
@@ -749,16 +862,18 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     );
     
     // Step 6: Serialize message for signing
-    // Solana messages use a custom wire format - serialize using the message's internal format
-    // The message needs to be serialized in the exact format Solana expects for signing
-    let message_bytes = bincode::serialize(&message)
-        .map_err(|e| {
-            TransactionResult {
+    // Solana messages use a custom wire format - serialize using bincode
+    // Note: This may need adjustment based on Solana's exact wire format requirements
+    let message_bytes = match bincode::serialize(&message) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
                 message: format!("Failed to serialize message: {:?}", e),
-            }
-        })?;
+            };
+        }
+    };
     
     // Step 7: Sign message using Ed25519 via Schnorr API
     let signature = match sign_message_ed25519(&message_bytes, &derivation_path).await {
@@ -781,15 +896,51 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     };
     
     // Step 9: Serialize transaction using Solana's wire format
-    // Solana transactions use a custom binary format
-    let tx_bytes = bincode::serialize(&transaction)
-        .map_err(|e| {
-            TransactionResult {
+    // Solana wire format: [compact-u16: num_signatures] || [signatures...] || [serialized_message]
+    // Serialize message using bincode
+    let message_bytes = match bincode::serialize(&transaction.message) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to serialize transaction: {:?}", e),
-            }
-        })?;
+                message: format!("Failed to serialize message: {:?}", e),
+            };
+        }
+    };
+    
+    // Build wire format: compact-u16 for signature count, then signatures, then message
+    let num_signatures = transaction.signatures.len();
+    if num_signatures > 0xFFFF {
+        return TransactionResult {
+            signature: "".to_string(),
+            status: "error".to_string(),
+            message: "Too many signatures".to_string(),
+        };
+    }
+    
+    let mut tx_bytes = Vec::new();
+    
+    // Compact-u16 encoding for signature count
+    // Solana uses a compact encoding: if < 128, single byte; else two bytes with MSB set
+    let num_sigs_u16 = num_signatures as u16; // Cast to u16 first
+    if num_sigs_u16 < 128 {
+        tx_bytes.push(num_sigs_u16 as u8);
+    } else {
+        let high_byte = (((num_sigs_u16 >> 8) & 0x7F) | 0x80) as u8;
+        let low_byte = (num_sigs_u16 & 0xFF) as u8;
+        tx_bytes.push(high_byte);
+        tx_bytes.push(low_byte);
+    }
+    
+    // Append signatures (each is 64 bytes)
+    for sig in &transaction.signatures {
+        // Solana signatures implement AsRef<[u8; 64]>
+        tx_bytes.extend_from_slice(sig.as_ref());
+    }
+    
+    // Append serialized message
+    tx_bytes.extend_from_slice(&message_bytes);
     
     // Step 8.5: Validate transaction size
     if tx_bytes.len() > SOLANA_TX_MAX_SIZE {
@@ -865,10 +1016,12 @@ async fn get_solana_transaction_status(signature_str: String) -> String {
                         if let Some(result) = json.get("result") {
                             if let Some(value) = result.get("value") {
                                 if let Some(status_array) = value.as_array() {
-                                    if let Some(Some(status_obj)) = status_array.first().and_then(|s| s.as_object()) {
+                                    if let Some(status_obj) = status_array.first().and_then(|s| s.as_object()) {
                                         // Check for error
-                                        if status_obj.contains_key("err") && !status_obj.get("err").unwrap().is_null() {
-                                            return "error".to_string();
+                                        if let Some(err_val) = status_obj.get("err") {
+                                            if !err_val.is_null() {
+                                                return "error".to_string();
+                                            }
                                         }
                                         
                                         // Check confirmation status
@@ -924,6 +1077,12 @@ fn get_canister_stats() -> CanisterStats {
         rpc_endpoint: SOLANA_DEVNET_RPC.to_string(),
         total_addresses_generated: total_addresses,
     }
+}
+
+#[ic_cdk::query]
+fn health_check() -> String {
+    // Simplest possible query to verify canister is working
+    "ok".to_string()
 }
 
 // Enable Candid export

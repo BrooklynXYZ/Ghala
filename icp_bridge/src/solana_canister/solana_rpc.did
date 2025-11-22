@@ -18,4 +18,5 @@ service : () -> {
   get_solana_transaction_status : (text) -> (text);
   request_airdrop : (text, nat64) -> (TransactionResult);
   send_sol : (text, nat64) -> (TransactionResult);
+  health_check : () -> (text) query;
 }

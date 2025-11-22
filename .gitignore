@@ -296,13 +296,9 @@ Mobile/web-build/
 # Mobile/declarations/ (may want to track these)
 
 # ===================================
-# Backend (Node.js)
+# Backend (Node.js) - Not actively used in current workflow
 # ===================================
-backend/.env
-backend/.env.local
-backend/node_modules/
-backend/dist/
-backend/build/
+backend/
 
 # ===================================
 # General Development

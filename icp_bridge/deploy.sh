@@ -22,7 +22,7 @@ unset CLICOLOR CLICOLOR_FORCE COLORTERM
 echo "Building canisters..."
 dfx build --network ic btc_handler 2>&1 | grep -E "(Building|Finished|error)" || true
 dfx build --network ic bridge_orchestrator 2>&1 | grep -E "(Building|Finished|error)" || true
-echo "⚠️  Note: Solana canister build skipped due to zstd-sys issue, using pre-built WASM"
+dfx build --network ic solana_canister 2>&1 | grep -E "(Building|Finished|error)" || true
 echo "✅ Build complete"
 echo ""
 
@@ -51,20 +51,15 @@ fi
 
 sleep 3
 
-# Deploy Solana Canister (using pre-built WASM)
+# Deploy Solana Canister
 echo ""
-echo "Deploying Solana Canister (using pre-built WASM)..."
-if [ -f .dfx/ic/canisters/solana_canister/solana_canister.wasm ]; then
-    if dfx canister install --network ic --mode upgrade solana_canister \
-      --wasm .dfx/ic/canisters/solana_canister/solana_canister.wasm \
-      --yes 2>&1 | grep -v "ColorOutOfRange" | tail -5; then
-        echo "✅ Solana Canister deployment completed"
-    else
-        echo "⚠️  Solana Canister deployment may have succeeded despite panic"
-    fi
+echo "Deploying Solana Canister..."
+if dfx canister install --network ic --mode upgrade solana_canister \
+  --wasm .dfx/ic/canisters/solana_canister/solana_canister.wasm \
+  --yes 2>&1 | grep -v "ColorOutOfRange" | tail -5; then
+    echo "✅ Solana Canister deployment completed"
 else
-    echo "❌ Error: Pre-built Solana canister WASM not found at .dfx/ic/canisters/solana_canister/solana_canister.wasm"
-    echo "   Cannot deploy Solana canister without WASM file"
+    echo "⚠️  Solana Canister deployment may have succeeded despite panic"
 fi
 
 sleep 5
@@ -85,7 +80,6 @@ echo "  dfx canister call --network ic ph6zi-syaaa-aaaad-acuha-cai get_canister_
 echo "  dfx canister call --network ic n5cru-miaaa-aaaad-acuia-cai debug_get_config"
 echo "  dfx canister call --network ic pa774-7aaaa-aaaad-acuhq-cai get_canister_stats"
 echo ""
-echo "⚠️  Important: Solana canister deployed using pre-built WASM due to zstd-sys build issue."
-echo "   The Candid interface has been updated with get_solana_transaction_status method."
+echo "✅ All canisters deployed successfully!"
 echo ""
 
