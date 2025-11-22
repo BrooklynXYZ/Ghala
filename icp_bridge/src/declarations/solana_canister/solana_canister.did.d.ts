@@ -19,6 +19,8 @@ export interface _SERVICE {
   'get_my_solana_address' : ActorMethod<[], string>,
   'get_recent_blockhash' : ActorMethod<[], string>,
   'get_solana_balance' : ActorMethod<[string], SolanaBalance>,
+  'get_solana_transaction_status' : ActorMethod<[string], string>,
+  'health_check' : ActorMethod<[], string>,
   'request_airdrop' : ActorMethod<[string, bigint], TransactionResult>,
   'send_sol' : ActorMethod<[string, bigint], TransactionResult>,
 }

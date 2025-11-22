@@ -19,6 +19,8 @@ export const idlFactory = ({ IDL }) => {
     'get_my_solana_address' : IDL.Func([], [IDL.Text], ['query']),
     'get_recent_blockhash' : IDL.Func([], [IDL.Text], []),
     'get_solana_balance' : IDL.Func([IDL.Text], [SolanaBalance], []),
+    'get_solana_transaction_status' : IDL.Func([IDL.Text], [IDL.Text], []),
+    'health_check' : IDL.Func([], [IDL.Text], ['query']),
     'request_airdrop' : IDL.Func(
         [IDL.Text, IDL.Nat64],
         [TransactionResult],
