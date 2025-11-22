@@ -244,17 +244,6 @@ async fn set_canister_ids(btc_canister: String, solana_canister: String) -> Stri
     format!("Canister IDs set: BTC={}, Solana={}", btc_canister, solana_canister)
 }
 
-<<<<<<< Updated upstream
-// Helper function to verify BTC deposit by checking balance
-async fn verify_btc_deposit(btc_canister: Principal, btc_address: &str, required_amount: u64) -> Result<u64, String> {
-    // Get BTC balance from BTC canister (with 6 confirmations minimum)
-    let balance_result: Result<(u64,), _> = ic_cdk::call(btc_canister, "get_btc_balance", (btc_address.to_string(),))
-        .await;
-    
-    match balance_result {
-        Ok((balance,)) => {
-            if balance >= required_amount {
-=======
 #[ic_cdk::query]
 fn get_my_btc_address_via_bridge() -> String {
     let caller = ic_cdk::caller();
@@ -288,10 +277,9 @@ async fn verify_btc_deposit(btc_canister: Principal, btc_address: &str, min_requ
             ic_cdk::println!("✅ BTC handler returned balance: {} sats", balance);
             ic_cdk::println!("=== BRIDGE: verify_btc_deposit END ===");
             if balance >= min_required {
->>>>>>> Stashed changes
                 Ok(balance)
             } else {
-                Err(format!("Insufficient BTC deposit. Required: {}, Found: {}", required_amount, balance))
+                Err(format!("Insufficient BTC deposit. Required minimum: {}, Found: {}", min_required, balance))
             }
         }
         Err(e) => {
@@ -303,12 +291,7 @@ async fn verify_btc_deposit(btc_canister: Principal, btc_address: &str, min_requ
 }
 
 #[ic_cdk::update]
-<<<<<<< Updated upstream
-async fn deposit_btc_for_musd(btc_amount: u64) -> DepositResponse {
-    // Input validation
-=======
 async fn deposit_btc_for_musd(btc_amount: u64, btc_address_opt: Option<String>) -> DepositResponse {
->>>>>>> Stashed changes
     if btc_amount == 0 {
         ic_cdk::trap("Invalid input: BTC amount must be greater than 0");
     }
@@ -326,12 +309,8 @@ async fn deposit_btc_for_musd(btc_amount: u64, btc_address_opt: Option<String>) 
         })
     });
     
-<<<<<<< Updated upstream
-    // Call BTC handler canister to generate address
-=======
     ic_cdk::println!("BTC canister ID from config: {}", btc_canister_id);
     
->>>>>>> Stashed changes
     let btc_canister = match Principal::from_text(&btc_canister_id) {
         Ok(principal) => principal,
         Err(e) => {
