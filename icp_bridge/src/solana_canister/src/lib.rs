@@ -1,5 +1,6 @@
 use candid::{CandidType, Deserialize, Principal};
 use ic_cdk::api::management_canister::http_request::{CanisterHttpRequestArgument, HttpHeader, HttpMethod};
+use ic_cdk::api::call::RejectionCode;
 use sha2::Digest;
 use ic_stable_structures::{memory_manager::{MemoryManager, VirtualMemory, MemoryId}, StableBTreeMap, DefaultMemoryImpl, Storable, storable::Bound};
 use std::cell::RefCell;
@@ -8,6 +9,36 @@ use std::time::Duration;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use getrandom::register_custom_getrandom;
+
+// Unified error type for consistent error handling
+#[derive(Debug)]
+enum SolanaError {
+    HttpRequest(String),
+    Rejection(RejectionCode, String),
+    Serialization(String),
+    Validation(String),
+    Signing(String),
+    Rpc(String),
+}
+
+impl From<(RejectionCode, String)> for SolanaError {
+    fn from((code, msg): (RejectionCode, String)) -> Self {
+        SolanaError::Rejection(code, msg)
+    }
+}
+
+impl From<SolanaError> for String {
+    fn from(err: SolanaError) -> Self {
+        match err {
+            SolanaError::HttpRequest(msg) => format!("HTTP error: {}", msg),
+            SolanaError::Rejection(code, msg) => format!("Rejection {:?}: {}", code, msg),
+            SolanaError::Serialization(msg) => format!("Serialization error: {}", msg),
+            SolanaError::Validation(msg) => format!("Validation error: {}", msg),
+            SolanaError::Signing(msg) => format!("Signing error: {}", msg),
+            SolanaError::Rpc(msg) => format!("RPC error: {}", msg),
+        }
+    }
+}
 
 const _KEY_NAME: &str = "test_key_1";
 const SOLANA_DEVNET_RPC: &str = "https://api.devnet.solana.com";
@@ -374,11 +405,17 @@ async fn get_recent_blockhash() -> String {
     "".to_string()
 }
 
-// Helper function to get Ed25519 public key using ICP's management canister
-// Note: This is a placeholder - Ed25519 support in ICP management canister may vary
-async fn get_ed25519_pubkey(derivation_path: &[Vec<u8>]) -> Result<solana_program::pubkey::Pubkey, String> {
-    // TODO: Implement Ed25519 public key derivation using ICP's management canister
-    // For now, use deterministic key generation similar to generate_solana_address
+// Helper function to get Ed25519 public key using ICP's Schnorr API
+// NOTE: Schnorr API is available in newer ic-cdk versions. For ic-cdk 0.15, this is a placeholder.
+// When upgrading to ic-cdk with schnorr support, uncomment the code below.
+async fn get_ed25519_pubkey(derivation_path: &[Vec<u8>]) -> Result<solana_program::pubkey::Pubkey, SolanaError> {
+    // TODO: When ic-cdk with schnorr API is available, use:
+    // use ic_cdk::api::management_canister::schnorr;
+    // let key_id = schnorr::SchnorrKeyId { name: _KEY_NAME.to_string() };
+    // let pubkey_result = schnorr::schnorr_public_key(...).await?;
+    // let pubkey_bytes = pubkey_result.0.public_key;
+    
+    // For now, use deterministic key generation (same as generate_solana_address)
     let caller = ic_cdk::caller();
     let caller_bytes = caller.as_slice();
     let mut hasher = sha2::Sha256::new();
@@ -387,23 +424,32 @@ async fn get_ed25519_pubkey(derivation_path: &[Vec<u8>]) -> Result<solana_progra
     hasher.update(b"solana_send");
     let hash = hasher.finalize();
     
-    // Convert hash to Pubkey
-    let pubkey_bytes: [u8; 32] = hash.as_slice().try_into()
-        .map_err(|_| "Failed to convert hash to 32 bytes".to_string())?;
-    Ok(solana_program::pubkey::Pubkey::try_from(pubkey_bytes.as_slice())
-        .map_err(|e| format!("Failed to create Pubkey: {}", e))?)
+    let pubkey_array: [u8; 32] = hash.as_slice().try_into()
+        .map_err(|_| SolanaError::Validation("Failed to convert hash to 32 bytes".to_string()))?;
+    
+    solana_program::pubkey::Pubkey::try_from(pubkey_array.as_slice())
+        .map_err(|e| SolanaError::Validation(format!("Failed to create Pubkey: {}", e)))
 }
 
-// Helper function to sign message with Ed25519 using ICP's management canister
-// Note: This is a placeholder - Ed25519 signing support in ICP management canister may vary
-async fn sign_message_ed25519(message: &[u8], derivation_path: &[Vec<u8>]) -> Result<solana_signature::Signature, String> {
-    // TODO: Implement Ed25519 message signing using ICP's management canister
-    // For now, return error indicating this needs to be implemented
-    Err("Ed25519 signing not yet implemented - requires ICP management canister Ed25519 API".to_string())
+// Helper function to sign message with Ed25519 using ICP's Schnorr API
+// NOTE: Schnorr API is available in newer ic-cdk versions. For ic-cdk 0.15, this is a placeholder.
+// When upgrading to ic-cdk with schnorr support, uncomment the code below.
+async fn sign_message_ed25519(message: &[u8], _derivation_path: &[Vec<u8>]) -> Result<solana_signature::Signature, SolanaError> {
+    // TODO: When ic-cdk with schnorr API is available, use:
+    // use ic_cdk::api::management_canister::schnorr;
+    // let key_id = schnorr::SchnorrKeyId { name: _KEY_NAME.to_string() };
+    // let signature_result = schnorr::sign_with_schnorr(...).await?;
+    // let signature_bytes = signature_result.0.signature;
+    // return Ok(solana_signature::Signature::from(sig_array));
+    
+    // For now, return error indicating schnorr API is needed
+    Err(SolanaError::Signing(
+        "Ed25519 signing requires ic-cdk with schnorr API support. Please upgrade ic-cdk.".to_string()
+    ))
 }
 
 // Helper function to get recent blockhash via HTTPS outcall
-async fn get_blockhash_via_https() -> Result<String, String> {
+async fn get_blockhash_via_https() -> Result<String, SolanaError> {
     let json_rpc_request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -421,7 +467,7 @@ async fn get_blockhash_via_https() -> Result<String, String> {
             },
         ],
         body: Some(serde_json::to_string(&json_rpc_request)
-            .map_err(|e| format!("Failed to serialize request: {:?}", e))?
+            .map_err(|e| SolanaError::Serialization(format!("Failed to serialize request: {:?}", e)))?
             .into_bytes()),
         max_response_bytes: Some(2000),
         transform: None,
@@ -429,29 +475,29 @@ async fn get_blockhash_via_https() -> Result<String, String> {
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 3_000_000_000u128)
         .await
-        .map_err(|e| format!("HTTP request failed: {:?}", e))?;
+        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
     
     if response.status != 200u64 {
-        return Err(format!("HTTP error: status {}", response.status));
+        return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
     }
     
     let response_text = String::from_utf8(response.body.to_vec())
-        .map_err(|e| format!("Failed to decode response: {:?}", e))?;
+        .map_err(|e| SolanaError::HttpRequest(format!("Failed to decode response: {:?}", e)))?;
     
     let json: serde_json::Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
+        .map_err(|e| SolanaError::Rpc(format!("Failed to parse JSON: {:?}", e)))?;
     
     let blockhash_str = json.get("result")
         .and_then(|r| r.get("value"))
         .and_then(|v| v.get("blockhash"))
         .and_then(|b| b.as_str())
-        .ok_or_else(|| "Blockhash not found in response".to_string())?;
+        .ok_or_else(|| SolanaError::Rpc("Blockhash not found in response".to_string()))?;
     
     Ok(blockhash_str.to_string())
 }
 
 // Helper function to get balance via HTTPS outcall
-async fn get_balance_via_https(address: &str) -> Result<u64, String> {
+async fn get_balance_via_https(address: &str) -> Result<u64, SolanaError> {
     let json_rpc_request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -469,7 +515,7 @@ async fn get_balance_via_https(address: &str) -> Result<u64, String> {
             },
         ],
         body: Some(serde_json::to_string(&json_rpc_request)
-            .map_err(|e| format!("Failed to serialize request: {:?}", e))?
+            .map_err(|e| SolanaError::Serialization(format!("Failed to serialize request: {:?}", e)))?
             .into_bytes()),
         max_response_bytes: Some(2000),
         transform: None,
@@ -477,26 +523,26 @@ async fn get_balance_via_https(address: &str) -> Result<u64, String> {
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 3_000_000_000u128)
         .await
-        .map_err(|e| format!("HTTP request failed: {:?}", e))?;
+        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
     
     if response.status != 200u64 {
-        return Err(format!("HTTP error: status {}", response.status));
+        return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
     }
     
     let response_text = String::from_utf8(response.body.to_vec())
-        .map_err(|e| format!("Failed to decode response: {:?}", e))?;
+        .map_err(|e| SolanaError::HttpRequest(format!("Failed to decode response: {:?}", e)))?;
     
     let json: serde_json::Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
+        .map_err(|e| SolanaError::Rpc(format!("Failed to parse JSON: {:?}", e)))?;
     
     json.get("result")
         .and_then(|r| r.get("value"))
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| "Balance not found in response".to_string())
+        .ok_or_else(|| SolanaError::Rpc("Balance not found in response".to_string()))
 }
 
 // Helper function to send transaction via HTTPS outcall
-async fn send_transaction_via_https(tx_base64: &str) -> Result<String, String> {
+async fn send_transaction_via_https(tx_base64: &str) -> Result<String, SolanaError> {
     let json_rpc_request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -514,7 +560,7 @@ async fn send_transaction_via_https(tx_base64: &str) -> Result<String, String> {
             },
         ],
         body: Some(serde_json::to_string(&json_rpc_request)
-            .map_err(|e| format!("Failed to serialize request: {:?}", e))?
+            .map_err(|e| SolanaError::Serialization(format!("Failed to serialize request: {:?}", e)))?
             .into_bytes()),
         max_response_bytes: Some(5000),
         transform: None,
@@ -522,26 +568,26 @@ async fn send_transaction_via_https(tx_base64: &str) -> Result<String, String> {
     
     let (response,) = ic_cdk::api::management_canister::http_request::http_request(request, 13_000_000_000u128)
         .await
-        .map_err(|e| format!("HTTP request failed: {:?}", e))?;
+        .map_err(|(code, msg)| SolanaError::Rejection(code, msg))?;
     
     if response.status != 200u64 {
-        return Err(format!("HTTP error: status {}", response.status));
+        return Err(SolanaError::HttpRequest(format!("HTTP error: status {}", response.status)));
     }
     
     let response_text = String::from_utf8(response.body.to_vec())
-        .map_err(|e| format!("Failed to decode response: {:?}", e))?;
+        .map_err(|e| SolanaError::HttpRequest(format!("Failed to decode response: {:?}", e)))?;
     
     let json: serde_json::Value = serde_json::from_str(&response_text)
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
+        .map_err(|e| SolanaError::Rpc(format!("Failed to parse JSON: {:?}", e)))?;
     
     if let Some(error) = json.get("error") {
-        return Err(format!("RPC error: {}", error));
+        return Err(SolanaError::Rpc(format!("RPC error: {}", error)));
     }
     
     json.get("result")
         .and_then(|r| r.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "Transaction signature not found in response".to_string())
+        .ok_or_else(|| SolanaError::Rpc("Transaction signature not found in response".to_string()))
 }
 
 #[ic_cdk::update]
@@ -598,14 +644,15 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     let caller = ic_cdk::caller();
     let derivation_path = vec![caller.as_slice().to_vec(), b"solana".to_vec()];
     
-    // Step 1: Get Ed25519 public key
+    // Step 1: Get Ed25519 public key using Schnorr API
     let payer = match get_ed25519_pubkey(&derivation_path).await {
-        Ok(pubkey) => pubkey,
+        Ok(pk) => pk,
         Err(e) => {
+            let msg: String = e.into();
             return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to get pubkey: {}", e),
+                message: format!("Failed to get pubkey: {}", msg),
             };
         }
     };
@@ -614,10 +661,11 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     let blockhash_str = match get_blockhash_via_https().await {
         Ok(hash) => hash,
         Err(e) => {
+            let msg: String = e.into();
             return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to get blockhash: {}", e),
+                message: format!("Failed to get blockhash: {}", msg),
             };
         }
     };
@@ -649,10 +697,11 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     let payer_balance = match get_balance_via_https(&payer.to_string()).await {
         Ok(balance) => balance,
         Err(e) => {
+            let msg: String = e.into();
             return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to check balance: {}", e),
+                message: format!("Failed to check balance: {}", msg),
             };
         }
     };
@@ -692,48 +741,55 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
         },
     };
     
-    // Step 5: Create message
+    // Step 5: Create unsigned message
     let message = SolMessage::new_with_blockhash(
         &[transfer_ix],
         Some(&payer),
         &blockhash,
     );
     
-    // Step 6: Sign message using Ed25519
-    // Serialize message for signing (Solana messages use custom serialization)
-    // For now, we'll serialize the entire message structure
+    // Step 6: Serialize message for signing
+    // Solana messages use a custom wire format - serialize using the message's internal format
+    // The message needs to be serialized in the exact format Solana expects for signing
     let message_bytes = bincode::serialize(&message)
-        .map_err(|e| format!("Failed to serialize message: {:?}", e))?;
+        .map_err(|e| {
+            TransactionResult {
+                signature: "".to_string(),
+                status: "error".to_string(),
+                message: format!("Failed to serialize message: {:?}", e),
+            }
+        })?;
     
+    // Step 7: Sign message using Ed25519 via Schnorr API
     let signature = match sign_message_ed25519(&message_bytes, &derivation_path).await {
         Ok(sig) => sig,
         Err(e) => {
+            let msg: String = e.into();
             return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to sign transaction: {}", e),
+                message: format!("Failed to sign transaction: {}", msg),
             };
         }
     };
     
-    // Step 7: Create properly signed transaction
+    // Step 8: Create signed transaction
+    // Construct transaction with message and signature
     let transaction = Transaction {
-        message,
         signatures: vec![signature],
+        message,
     };
     
-    // Step 8: Serialize and encode transaction
-    // Solana transactions use custom wire format
-    let tx_bytes = match bincode::serialize(&transaction) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            return TransactionResult {
+    // Step 9: Serialize transaction using Solana's wire format
+    // Solana transactions use a custom binary format
+    let tx_bytes = bincode::serialize(&transaction)
+        .map_err(|e| {
+            TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
                 message: format!("Failed to serialize transaction: {:?}", e),
-            };
-        }
-    };
+            }
+        })?;
     
     // Step 8.5: Validate transaction size
     if tx_bytes.len() > SOLANA_TX_MAX_SIZE {
@@ -749,14 +805,15 @@ async fn send_sol(to_address: String, lamports: u64) -> TransactionResult {
     
     let tx_base64 = base64::encode(&tx_bytes);
     
-    // Step 9: Send signed transaction to Solana via HTTPS
+    // Step 10: Send signed transaction to Solana via HTTPS
     let tx_signature = match send_transaction_via_https(&tx_base64).await {
         Ok(sig) => sig,
         Err(e) => {
+            let msg: String = e.into();
             return TransactionResult {
                 signature: "".to_string(),
                 status: "error".to_string(),
-                message: format!("Failed to send transaction: {}", e),
+                message: format!("Failed to send transaction: {}", msg),
             };
         }
     };

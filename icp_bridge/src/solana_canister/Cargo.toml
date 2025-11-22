@@ -25,4 +25,5 @@ solana-transaction = "3.0"
 solana-signature = "3.0"
 solana-program = "3.0"
 solana-hash = "3.0"
+borsh = "1.0"
 getrandom = { version = "0.2", features = ["custom"] }
