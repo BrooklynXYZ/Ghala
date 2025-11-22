@@ -91,10 +91,46 @@ class ICPBridgeService {
     if (!this.isInitialized) throw new Error('Service not initialized');
     try {
       const response = await bridgeOrchestratorAPI.mintMUSDOnMezo(btcToSatoshis(btcAmount));
-      logger.debug('mUSD minted', { response, btcAmount });
+      logger.debug('mUSD mint initiated', { response, btcAmount });
       return response;
     } catch (error) {
       logger.error('Error minting mUSD', error);
+      throw error;
+    }
+  }
+
+  async finalizeMintTransaction(txHash: string): Promise<MintResponse> {
+    if (!this.isInitialized) throw new Error('Service not initialized');
+    try {
+      const response = await bridgeOrchestratorAPI.finalizeMintTransaction(txHash);
+      logger.debug('mUSD mint finalized', { response });
+      return response;
+    } catch (error) {
+      logger.error('Error finalizing mUSD mint', error);
+      throw error;
+    }
+  }
+
+  async initiateBridgeTransfer(btcAmount: number): Promise<string> {
+    if (!this.isInitialized) throw new Error('Service not initialized');
+    try {
+      const txHash = await bridgeOrchestratorAPI.initiateBridgeTransfer(btcToSatoshis(btcAmount));
+      logger.debug('Bridge transfer initiated', { txHash, btcAmount });
+      return txHash;
+    } catch (error) {
+      logger.error('Error initiating bridge transfer', error);
+      throw error;
+    }
+  }
+
+  async sendBTCToAddress(address: string, btcAmount: number): Promise<string> {
+    if (!this.isInitialized) throw new Error('Service not initialized');
+    try {
+      const txid = await bridgeOrchestratorAPI.sendBTCToAddress(address, btcToSatoshis(btcAmount));
+      logger.debug('BTC sent to address', { address, btcAmount, txid });
+      return txid;
+    } catch (error) {
+      logger.error('Error sending BTC to address', error);
       throw error;
     }
   }

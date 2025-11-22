@@ -5,43 +5,35 @@ import dotenv from 'dotenv';
 import { config } from '@/config/env';
 import apiRoutes from '@/routes/api.routes';
 
-// Load environment variables
 dotenv.config();
 
-// Initialize Express app
 const app = express();
 const PORT = config.server.port;
 
-// Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configuration
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] // Replace with actual frontend domain
+    ? ['https://your-frontend-domain.com']
     : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:8080'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ${req.method} ${req.path} - ${req.ip}`);
   next();
 });
 
-// API routes
 app.use('/api', apiRoutes);
 
-// Root endpoint
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -57,7 +49,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -67,7 +58,6 @@ app.use('*', (req, res) => {
   });
 });
 
-// Global error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('❌ Unhandled error:', err);
   
@@ -80,7 +70,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received. Shutting down gracefully...');
   process.exit(0);
@@ -91,7 +80,6 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Start server with error handling
 const server = app.listen(PORT, () => {
   console.log(`🚀 DegenForge Backend API running on port ${PORT}`);
   console.log(`📡 Environment: ${config.server.nodeEnv}`);
@@ -102,7 +90,6 @@ const server = app.listen(PORT, () => {
   console.log(`📋 Borrow Manager: ${config.mezo.borrowManagerAddress}`);
 });
 
-// Handle server errors gracefully
 server.on('error', (error: any) => {
   if (error.code === 'EADDRINUSE') {
     console.error(`❌ Port ${PORT} is already in use. Please use a different port.`);
@@ -112,16 +99,12 @@ server.on('error', (error: any) => {
   process.exit(1);
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
-  // Don't exit the process, just log the error
 });
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit the process, just log the error
 });
 
 export default app;

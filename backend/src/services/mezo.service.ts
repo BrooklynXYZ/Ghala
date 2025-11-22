@@ -29,14 +29,12 @@ export class MezoService {
 
   private initializeProvider(): void {
     try {
-      // Initialize provider with Boar RPC and disable ENS
       this.provider = new ethers.JsonRpcProvider(mezoConfig.rpcUrl, undefined, {
         staticNetwork: true
       });
-      
-      // Initialize wallet for backend operations
+
       this.wallet = new ethers.Wallet(mezoConfig.privateKey, this.provider);
-      
+
       console.log('✅ Mezo provider initialized with wallet:', this.wallet.address);
     } catch (error) {
       console.error('❌ Failed to initialize Mezo provider:', error);
@@ -46,14 +44,12 @@ export class MezoService {
 
   private initializeContracts(): void {
     try {
-      // Initialize mUSD Token contract (this should work)
       this.musdTokenContract = new ethers.Contract(
         mezoConfig.musdTokenAddress,
         contractABIs.musdToken,
         this.provider
       );
 
-      // Initialize BorrowManager contract only if address is valid
       if (mezoConfig.borrowManagerAddress && mezoConfig.borrowManagerAddress !== '<to_be_found>') {
         this.borrowManagerContract = new ethers.Contract(
           mezoConfig.borrowManagerAddress,
@@ -71,9 +67,6 @@ export class MezoService {
     }
   }
 
-  /**
-   * Deposit BTC as collateral for mUSD minting
-   */
   async depositCollateral(request: DepositRequest): Promise<DepositResponse> {
     try {
       if (!this.borrowManagerContract) {
@@ -82,45 +75,39 @@ export class MezoService {
 
       const { btcAmount, walletAddress } = request;
 
-      // Validate minimum collateral requirement
       const btcValueUSD = await this.getBTCPriceUSD();
       const collateralValueUSD = parseFloat(btcAmount) * btcValueUSD;
-      
+
       if (collateralValueUSD < mezoConstants.MIN_COLLATERAL_USD) {
         throw new InsufficientCollateralError(
           `Minimum collateral required: $${mezoConstants.MIN_COLLATERAL_USD}. Provided: $${collateralValueUSD.toFixed(2)}`
         );
       }
 
-      // Convert BTC amount to wei
       const collateralAmountWei = ethers.parseUnits(btcAmount, mezoConstants.BTC_DECIMALS);
 
-      // Estimate gas for the transaction
       const gasEstimate = await this.borrowManagerContract.depositCollateral.estimateGas(
         collateralAmountWei,
-        { value: collateralAmountWei } // Send BTC as native currency
+        { value: collateralAmountWei }
       );
 
-      // Execute deposit transaction
       const tx = await this.borrowManagerContract.depositCollateral(
         collateralAmountWei,
         {
           value: collateralAmountWei,
-          gasLimit: gasEstimate * 120n / 100n, // Add 20% buffer
+          gasLimit: gasEstimate * 120n / 100n,
           gasPrice: ethers.parseUnits(mezoConstants.GAS_PRICE_GWEI.toString(), 'gwei')
         }
       );
 
       console.log(`📤 Collateral deposit transaction sent: ${tx.hash}`);
 
-      // Wait for confirmation
       const receipt = await tx.wait();
-      
+
       if (!receipt) {
         throw new TransactionFailedError('Transaction receipt not found');
       }
 
-      // Emit event for monitoring
       const depositEvent: CollateralDepositedEvent = {
         user: walletAddress,
         amount: btcAmount,
@@ -143,9 +130,6 @@ export class MezoService {
     }
   }
 
-  /**
-   * Mint mUSD against deposited collateral
-   */
   async mintMUSD(request: MintRequest): Promise<MintResponse> {
     try {
       if (!this.borrowManagerContract) {
@@ -154,17 +138,15 @@ export class MezoService {
 
       const { musdAmount, walletAddress } = request;
 
-      // Get current position to validate LTV
       const position = await this.getLoanPosition(walletAddress);
       const currentLTV = parseFloat(position.currentLTV.replace('%', ''));
-      
+
       if (currentLTV >= mezoConstants.MAX_LTV) {
         throw new LTVExceededError(
           `LTV cannot exceed ${mezoConstants.MAX_LTV}%. Current: ${currentLTV}%`
         );
       }
 
-      // Calculate new LTV after minting
       const musdAmountFloat = parseFloat(musdAmount);
       const newTotalDebt = parseFloat(position.musdMinted) + musdAmountFloat;
       const collateralValueUSD = parseFloat(position.collateralValueUSD);
@@ -176,28 +158,23 @@ export class MezoService {
         );
       }
 
-      // Convert mUSD amount to wei
       const musdAmountWei = ethers.parseUnits(musdAmount, mezoConstants.MUSD_DECIMALS);
 
-      // Estimate gas for the transaction
       const gasEstimate = await this.borrowManagerContract.mintMUSD.estimateGas(musdAmountWei);
 
-      // Execute mint transaction
       const tx = await this.borrowManagerContract.mintMUSD(musdAmountWei, {
-        gasLimit: gasEstimate * 120n / 100n, // Add 20% buffer
+        gasLimit: gasEstimate * 120n / 100n,
         gasPrice: ethers.parseUnits(mezoConstants.GAS_PRICE_GWEI.toString(), 'gwei')
       });
 
       console.log(`📤 mUSD mint transaction sent: ${tx.hash}`);
 
-      // Wait for confirmation
       const receipt = await tx.wait();
-      
+
       if (!receipt) {
         throw new TransactionFailedError('Transaction receipt not found');
       }
 
-      // Emit event for monitoring
       const mintEvent: MUSDMintedEvent = {
         user: walletAddress,
         amount: musdAmount,
@@ -222,25 +199,18 @@ export class MezoService {
     }
   }
 
-  /**
-   * Get user's loan position details
-   */
   async getLoanPosition(userAddress: string): Promise<LoanPosition> {
     try {
-      // Call contract to get position data
       const positionData = await this.borrowManagerContract.getUserPosition(userAddress);
-      
-      // Get BTC price for USD conversion
+
       const btcPriceUSD = await this.getBTCPriceUSD();
-      
-      // Convert from wei to readable amounts
+
       const collateralAmountBTC = ethers.formatUnits(positionData.collateralAmount, mezoConstants.BTC_DECIMALS);
       const debtAmountMUSD = ethers.formatUnits(positionData.debtAmount, mezoConstants.MUSD_DECIMALS);
-      
-      // Calculate values
+
       const collateralValueUSD = parseFloat(collateralAmountBTC) * btcPriceUSD;
-      const currentLTV = positionData.ltv.toNumber() / 100; // Convert from basis points
-      const healthFactor = collateralValueUSD / (parseFloat(debtAmountMUSD) * 1.1); // 10% buffer for liquidation
+      const currentLTV = positionData.ltv.toNumber() / 100;
+      const healthFactor = collateralValueUSD / (parseFloat(debtAmountMUSD) * 1.1);
 
       return {
         collateralBTC: collateralAmountBTC,
@@ -259,21 +229,16 @@ export class MezoService {
     }
   }
 
-  /**
-   * Calculate maximum mUSD mintable for given BTC collateral
-   */
   async getMaxMintable(btcAmount: string): Promise<MaxMintableResponse> {
     try {
       const btcAmountWei = ethers.parseUnits(btcAmount, mezoConstants.BTC_DECIMALS);
-      
-      // Call contract to calculate max mintable
+
       const maxMintableWei = await this.borrowManagerContract.calculateMaxMintable(btcAmountWei);
       const maxMintable = ethers.formatUnits(maxMintableWei, mezoConstants.MUSD_DECIMALS);
-      
-      // Get BTC price for USD conversion
+
       const btcPriceUSD = await this.getBTCPriceUSD();
       const collateralValueUSD = parseFloat(btcAmount) * btcPriceUSD;
-      
+
       return {
         maxMintable,
         atLTV: `${mezoConstants.MAX_LTV}%`,
@@ -287,18 +252,11 @@ export class MezoService {
     }
   }
 
-  /**
-   * Get BTC price in USD (placeholder - integrate with price oracle)
-   */
   private async getBTCPriceUSD(): Promise<number> {
     // TODO: Integrate with actual price oracle (CoinGecko, Chainlink, etc.)
-    // For now, return a placeholder value
-    return 50000; // $50,000 per BTC
+    return 50000;
   }
 
-  /**
-   * Get LTV ratio for user
-   */
   async getLTV(userAddress: string): Promise<number> {
     try {
       const position = await this.getLoanPosition(userAddress);
@@ -309,22 +267,16 @@ export class MezoService {
     }
   }
 
-  /**
-   * Check if position is at liquidation risk
-   */
   async isLiquidationRisk(userAddress: string): Promise<boolean> {
     try {
       const ltv = await this.getLTV(userAddress);
-      return ltv >= mezoConstants.MAX_LTV * 0.95; // 95% of max LTV as warning threshold
+      return ltv >= mezoConstants.MAX_LTV * 0.95;
     } catch (error) {
       console.error('❌ Failed to check liquidation risk:', error);
       return false;
     }
   }
 
-  /**
-   * Get network status and connection info
-   */
   async getNetworkStatus(): Promise<{
     connected: boolean;
     chainId: number;
@@ -334,7 +286,7 @@ export class MezoService {
     try {
       const blockNumber = await this.provider.getBlockNumber();
       const feeData = await this.provider.getFeeData();
-      
+
       return {
         connected: true,
         chainId: mezoConfig.chainId,

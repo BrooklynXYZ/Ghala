@@ -45,7 +45,12 @@ service : () -> {
   get_my_position : () -> (BridgePosition) query;
   debug_get_config : () -> (text) query;
   get_position : (principal) -> (BridgePosition) query;
+  get_my_btc_address_via_bridge : () -> (text) query;
   health_check : () -> (HealthStatus) query;
   mint_musd_on_mezo : (nat64) -> (MintResponse);
+  finalize_mint_transaction : (text) -> (MintResponse);
+  initiate_bridge_transfer : (nat64) -> (text);
+  send_btc_to_address : (text, nat64) -> (text);
+  redeem_musd : (nat64) -> (text);
   set_canister_ids : (text, text) -> (text);
 }

@@ -16,16 +16,11 @@ import {
 
 export class LendingController {
   
-  /**
-   * Deposit BTC as collateral
-   * POST /api/lending/deposit
-   */
   async depositCollateral(req: Request, res: Response): Promise<void> {
     try {
       const { btcAmount, walletAddress }: DepositRequest = req.body;
       const authHeader = req.headers.authorization;
       
-      // Validate authentication
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         res.status(401).json({
           success: false,
@@ -39,7 +34,6 @@ export class LendingController {
       const token = authHeader.substring(7);
       const userData = await walletService.verifyJWTToken(token);
 
-      // Validate input
       if (!btcAmount || !walletAddress) {
         res.status(400).json({
           success: false,
@@ -50,7 +44,6 @@ export class LendingController {
         return;
       }
 
-      // Validate wallet address matches authenticated user
       if (userData.address.toLowerCase() !== walletAddress.toLowerCase()) {
         res.status(403).json({
           success: false,
@@ -61,7 +54,6 @@ export class LendingController {
         return;
       }
 
-      // Validate amount
       const amount = parseFloat(btcAmount);
       if (isNaN(amount) || amount <= 0) {
         res.status(400).json({
@@ -73,7 +65,6 @@ export class LendingController {
         return;
       }
 
-      // Execute deposit
       const result = await mezoService.depositCollateral({
         btcAmount,
         walletAddress
@@ -118,10 +109,6 @@ export class LendingController {
     }
   }
 
-  /**
-   * Mint mUSD against collateral
-   * POST /api/lending/mint
-   */
   async mintMUSD(req: Request, res: Response): Promise<void> {
     try {
       const { musdAmount, walletAddress }: MintRequest = req.body;
@@ -220,10 +207,6 @@ export class LendingController {
     }
   }
 
-  /**
-   * Get user's loan position
-   * GET /api/lending/position/:address
-   */
   async getLoanPosition(req: Request, res: Response): Promise<void> {
     try {
       const { address } = req.params;
@@ -276,10 +259,6 @@ export class LendingController {
     }
   }
 
-  /**
-   * Calculate maximum mUSD mintable
-   * GET /api/lending/calculate-max?btcAmount=0.1
-   */
   async calculateMaxMintable(req: Request, res: Response): Promise<void> {
     try {
       const { btcAmount } = req.query;
@@ -328,10 +307,6 @@ export class LendingController {
     }
   }
 
-  /**
-   * Get liquidation risk assessment
-   * GET /api/lending/risk/:address
-   */
   async getRiskAssessment(req: Request, res: Response): Promise<void> {
     try {
       const { address } = req.params;
@@ -421,10 +396,6 @@ export class LendingController {
     }
   }
 
-  /**
-   * Get network status
-   * GET /api/lending/network-status
-   */
   async getNetworkStatus(req: Request, res: Response): Promise<void> {
     try {
       const networkStatus = await mezoService.getNetworkStatus();

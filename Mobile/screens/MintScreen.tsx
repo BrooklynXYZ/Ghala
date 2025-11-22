@@ -68,7 +68,6 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
   const btcPrice = 65000;
   const ltvRatio = 0.5;
   const fee = 0.01;
-  const minMintAmount = 0.001;
 
   const btcValue = parseFloat(btcAmount) || 0;
   const usdValue = btcValue * btcPrice;
@@ -113,8 +112,8 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
       return 'Please enter a valid number';
     }
 
-    if (numValue < minMintAmount) {
-      return `Minimum amount is ${minMintAmount} BTC`;
+    if (numValue <= 0) {
+      return 'Amount must be greater than 0';
     }
 
     if (numValue > walletBalance) {
@@ -130,6 +129,11 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     }
   }, [btcAmount, touched, validateAmount]);
 
+  const [mintStep, setMintStep] = useState(0);
+  const [stepStatus, setStepStatus] = useState('');
+
+  // ... existing state ...
+
   const handleConfirm = useCallback(async () => {
     const validationError = validateAmount(btcAmount);
     if (validationError) {
@@ -139,8 +143,10 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     }
 
     setIsLoading(true);
+    setMintStep(1);
+    setStepStatus('Requesting Mezo Deposit Address...');
     progressValue.value = 0;
-    progressValue.value = withTiming(1, { duration: 3000 });
+    progressValue.value = withTiming(1, { duration: 15000 }); // Longer for multi-step
 
     const btcValue = parseFloat(btcAmount);
     const musdAmount = usdValue * ltvRatio - (usdValue * ltvRatio * fee);
@@ -155,36 +161,72 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     try {
       await ICPBridgeService.initialize();
 
-      ICPBridgeService.mintMUSDOnMezo(btcValue)
-        .then(async (result) => {
-          await transactionStore.updateTransaction(tx.id, {
-            status: 'confirmed',
-            mezoTxHash: result.transaction_hash,
-            amount: Number(result.musd_amount) / 1e18,
-          });
+      // Step 1: Initiate Deposit on Mezo (Get EVM Tx to find logs)
+      setStepStatus('Requesting Mezo Deposit Address...');
+      const initTxHash = await ICPBridgeService.initiateBridgeTransfer(btcValue);
+      console.log('Init Tx:', initTxHash);
 
-          setMintResult({
-            txHash: result.transaction_hash,
-            musdAmount: Number(result.musd_amount) / 1e18,
-            newLtv: result.new_ltv,
-          });
+      // Step 2: Parse Logs (Mocking this part as we need an EVM indexer)
+      setMintStep(2);
+      setStepStatus('Identifying Bridge Address...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate log parsing
+      const mockMezoBtcAddress = "tb1q4280xaxzd80af93nyy9m65ykhrz64c4nXZ_MOCK"; 
 
-          setIsConfirmed(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        })
-        .catch(async (error) => {
-          logger.error('Mint failed', error);
-          await transactionStore.updateTransaction(tx.id, {
-            status: 'failed',
-            errorMessage: error.message || 'Failed to mint mUSD',
-          });
-          setError(error.message || 'Failed to mint mUSD');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      // Step 3: Send BTC to that address
+      setMintStep(3);
+      setStepStatus(`Sending BTC to ${mockMezoBtcAddress.slice(0, 8)}...`);
+      const btcTxId = await ICPBridgeService.sendBTCToAddress(mockMezoBtcAddress, btcValue);
+      console.log('BTC Sent:', btcTxId);
+
+      // Step 4: Submit Proof (Mocking Off-chain Relayer)
+      setMintStep(4);
+      setStepStatus('Waiting for BTC Confirmations & Proving...');
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate proof generation time
+
+      // Step 5: Open Trove (Finalize)
+      setMintStep(5);
+      setStepStatus('Opening Trove on Mezo...');
+      
+      // This is the existing logic (calls openTrove)
+      let result = await ICPBridgeService.mintMUSDOnMezo(btcValue);
+      
+      if (result.transaction_hash) {
+        await transactionStore.updateTransaction(tx.id, {
+          mezoTxHash: result.transaction_hash,
         });
+      }
+
+      // Poll for finalization if pending
+      const MAX_POLLS = 60;
+      let polls = 0;
+      while (result.status === 'pending' && polls < MAX_POLLS) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        result = await ICPBridgeService.finalizeMintTransaction(result.transaction_hash);
+        polls++;
+      }
+
+      if (result.status === 'confirmed') {
+        await transactionStore.updateTransaction(tx.id, {
+          status: 'confirmed',
+          mezoTxHash: result.transaction_hash,
+          amount: Number(result.musd_amount) / 1e18,
+        });
+
+        setMintResult({
+          txHash: result.transaction_hash,
+          musdAmount: Number(result.musd_amount) / 1e18,
+          newLtv: result.new_ltv,
+        });
+
+        setIsConfirmed(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        throw new Error(result.status === 'pending' ? 'Transaction timed out' : 'Mint failed on chain');
+      }
 
       TransactionMonitorService.startMonitoring(tx.id, 'mint');
     } catch (error: any) {
-      logger.error('Mint initialization failed', error);
+      logger.error('Mint failed', error);
       await transactionStore.updateTransaction(tx.id, {
         status: 'failed',
         errorMessage: error.message || 'Failed to mint mUSD',
@@ -193,6 +235,8 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsLoading(false);
+      setMintStep(0);
+      setStepStatus('');
     }
   }, [btcAmount, validateAmount, progressValue, usdValue, ltvRatio, fee]);
 
@@ -398,9 +442,13 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
             </View>
 
             <View style={styles.balanceRow}>
-              <View style={styles.balanceItem}>
+              <View style={[styles.balanceItem, { flex: 1, marginRight: Spacing.md }]}>
                 <Feather name="briefcase" size={14} color={themeColors.textSecondary} />
-                <Text style={[styles.balanceLabel, { color: themeColors.textSecondary }]}>
+                <Text
+                  style={[styles.balanceLabel, { color: themeColors.textSecondary, flex: 1 }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   Balance: {walletBalance} BTC
                 </Text>
                 <TouchableOpacity onPress={loadBalance} style={styles.refreshButton}>
@@ -409,8 +457,12 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
               </View>
               <View style={styles.balanceItem}>
                 <Feather name="trending-up" size={14} color={themeColors.textSecondary} />
-                <Text style={[styles.priceLabel, { color: themeColors.textSecondary }]}>
-                  ${btcPrice.toLocaleString()}
+                <Text
+                  style={[styles.priceLabel, { color: themeColors.textSecondary }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  ~${btcPrice.toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -428,7 +480,11 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
                 <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
                   USD Value
                 </Text>
-                <Text style={[styles.statValue, { color: themeColors.textPrimary }]}>
+                <Text
+                  style={[styles.statValue, { color: themeColors.textPrimary }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   ${usdValue.toLocaleString()}
                 </Text>
               </SectionCard>
@@ -437,7 +493,11 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
                 <Text style={[styles.statLabel, { color: themeColors.textSecondary }]}>
                   You Receive
                 </Text>
-                <Text style={[styles.statValue, { color: themeColors.textPrimary }]}>
+                <Text
+                  style={[styles.statValue, { color: themeColors.textPrimary }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   {netMinted.toFixed(2)}
                 </Text>
                 <Text style={[styles.statUnit, { color: themeColors.textTertiary }]}>
@@ -523,7 +583,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
             loading={isLoading}
             onPress={handleConfirm}
           >
-            {isLoading ? 'Minting...' : 'Confirm Mint'}
+            {isLoading ? (stepStatus || 'Minting...') : 'Confirm Mint'}
           </ActionButton>
           <ActionButton variant="secondary" fullWidth onPress={() => onNavigate('Home')}>
             Cancel

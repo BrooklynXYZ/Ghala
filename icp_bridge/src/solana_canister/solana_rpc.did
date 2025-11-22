@@ -15,6 +15,7 @@ service : () -> {
   get_my_solana_address : () -> (text) query;
   get_recent_blockhash : () -> (text);
   get_solana_balance : (text) -> (SolanaBalance);
+  get_solana_transaction_status : (text) -> (text);
   request_airdrop : (text, nat64) -> (TransactionResult);
   send_sol : (text, nat64) -> (TransactionResult);
 }

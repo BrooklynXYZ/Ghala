@@ -3,11 +3,7 @@ import { walletService } from '@/services/wallet.service';
 import { WalletAuthRequest, AuthResponse, ApiResponse, WalletNotConnectedError } from '@/types';
 
 export class AuthController {
-  
-  /**
-   * Connect wallet and authenticate user
-   * POST /api/auth/connect-wallet
-   */
+
   async connectWallet(req: Request, res: Response): Promise<void> {
     try {
       const { address, signature, message, walletType }: WalletAuthRequest = req.body;
@@ -62,7 +58,7 @@ export class AuthController {
 
     } catch (error) {
       console.error('❌ Connect wallet error:', error);
-      
+
       if (error instanceof WalletNotConnectedError) {
         res.status(401).json({
           success: false,
@@ -82,10 +78,6 @@ export class AuthController {
     }
   }
 
-  /**
-   * Generate message for wallet signing
-   * GET /api/auth/sign-message/:address
-   */
   async getSignMessage(req: Request, res: Response): Promise<void> {
     try {
       const { address } = req.params;
@@ -102,7 +94,7 @@ export class AuthController {
 
       // Detect wallet type from address format
       const walletType = walletService.detectWalletType(address);
-      
+
       if (!walletType) {
         res.status(400).json({
           success: false,
@@ -131,7 +123,7 @@ export class AuthController {
 
     } catch (error) {
       console.error('❌ Get sign message error:', error);
-      
+
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -141,14 +133,10 @@ export class AuthController {
     }
   }
 
-  /**
-   * Verify JWT token
-   * GET /api/auth/verify-token
-   */
   async verifyToken(req: Request, res: Response): Promise<void> {
     try {
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         res.status(401).json({
           success: false,
@@ -175,7 +163,7 @@ export class AuthController {
 
     } catch (error) {
       console.error('❌ Verify token error:', error);
-      
+
       res.status(401).json({
         success: false,
         error: 'Invalid token',
@@ -185,14 +173,10 @@ export class AuthController {
     }
   }
 
-  /**
-   * Refresh JWT token
-   * POST /api/auth/refresh-token
-   */
   async refreshToken(req: Request, res: Response): Promise<void> {
     try {
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         res.status(401).json({
           success: false,
@@ -215,7 +199,7 @@ export class AuthController {
 
     } catch (error) {
       console.error('❌ Refresh token error:', error);
-      
+
       res.status(401).json({
         success: false,
         error: 'Token refresh failed',
@@ -225,14 +209,10 @@ export class AuthController {
     }
   }
 
-  /**
-   * Get wallet info from token
-   * GET /api/auth/wallet-info
-   */
   async getWalletInfo(req: Request, res: Response): Promise<void> {
     try {
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         res.status(401).json({
           success: false,
@@ -263,7 +243,7 @@ export class AuthController {
 
     } catch (error) {
       console.error('❌ Get wallet info error:', error);
-      
+
       res.status(401).json({
         success: false,
         error: 'Authentication failed',

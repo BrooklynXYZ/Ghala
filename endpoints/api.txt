@@ -62,7 +62,7 @@ Connect wallet and authenticate user.
     }
   },
   "message": "Wallet connected successfully",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -97,7 +97,7 @@ Generate message for wallet signing.
     "address": "0x742d35Cc6634C0532925a3b8D6Ac6E2f5964C4d7"
   },
   "message": "Sign message generated successfully",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -121,10 +121,10 @@ Authorization: Bearer <jwt_token>
       "address": "0x742d35Cc6634C0532925a3b8D6Ac6E2f5964C4d7",
       "walletType": "mezo-passport"
     },
-    "expiresAt": "2024-01-16T10:30:00.000Z"
+    "expiresAt": "2025-01-16T10:30:00.000Z"
   },
   "message": "Token is valid",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -151,7 +151,7 @@ Authorization: Bearer <jwt_token>
     }
   },
   "message": "Token refreshed successfully",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -176,7 +176,7 @@ Authorization: Bearer <jwt_token>
     "isConnected": true
   },
   "message": "Wallet info retrieved successfully",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -209,11 +209,11 @@ Authorization: Bearer <jwt_token>
     "status": "confirmed",
     "gasUsed": "150000",
     "blockNumber": 12345,
-    "timestamp": "2024-01-15T10:30:00.000Z",
+    "timestamp": "2025-01-15T10:30:00.000Z",
     "collateralDeposited": "0.05"
   },
   "message": "BTC collateral deposited successfully",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -255,13 +255,13 @@ Authorization: Bearer <jwt_token>
     "status": "confirmed",
     "gasUsed": "180000",
     "blockNumber": 12346,
-    "timestamp": "2024-01-15T10:35:00.000Z",
+    "timestamp": "2025-01-15T10:35:00.000Z",
     "musdMinted": "2000",
     "newLTV": "80.00%",
     "interestRate": "1%"
   },
   "message": "mUSD minted successfully",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -290,10 +290,10 @@ Authorization: Bearer <jwt_token>
     "interestRate": "1%",
     "liquidationThreshold": "90%",
     "healthFactor": "1.125",
-    "lastUpdated": "2024-01-15T10:35:00.000Z"
+    "lastUpdated": "2025-01-15T10:35:00.000Z"
   },
   "message": "Loan position retrieved successfully",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -316,7 +316,7 @@ Calculate maximum mUSD mintable for given BTC collateral.
     "estimatedValue": "5000.00"
   },
   "message": "Maximum mintable amount calculated successfully",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -354,7 +354,7 @@ Authorization: Bearer <jwt_token>
     "healthFactor": "1.125"
   },
   "message": "Risk assessment completed successfully",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -379,7 +379,7 @@ Get Mezo network status and connection info.
     "gasPrice": "20"
   },
   "message": "Network status retrieved successfully",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -395,7 +395,7 @@ Health check endpoint.
 {
   "success": true,
   "message": "DegenForge Backend API is running",
-  "timestamp": "2024-01-15T10:35:00.000Z",
+  "timestamp": "2025-01-15T10:35:00.000Z",
   "version": "1.0.0"
 }
 ```
@@ -410,7 +410,7 @@ Health check endpoint.
   "success": false,
   "error": "InsufficientCollateralError",
   "message": "Minimum collateral required: $1800. Provided: $1500.00",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -420,7 +420,7 @@ Health check endpoint.
   "success": false,
   "error": "LTVExceededError",
   "message": "LTV cannot exceed 90%. Current: 95.5%",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -430,7 +430,7 @@ Health check endpoint.
   "success": false,
   "error": "AuthenticationError",
   "message": "Invalid wallet signature",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 
@@ -440,7 +440,7 @@ Health check endpoint.
   "success": false,
   "error": "TransactionFailedError",
   "message": "Transaction receipt not found",
-  "timestamp": "2024-01-15T10:35:00.000Z"
+  "timestamp": "2025-01-15T10:35:00.000Z"
 }
 ```
 

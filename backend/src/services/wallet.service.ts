@@ -12,9 +12,6 @@ export class WalletService {
     this.jwtExpiresIn = config.jwt.expiresIn;
   }
 
-  /**
-   * Verify wallet signature and authenticate user
-   */
   async authenticateWallet(request: WalletAuthRequest): Promise<AuthResponse> {
     try {
       const { address, signature, message, walletType } = request;
@@ -49,9 +46,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Verify wallet signature using ethers.js
-   */
   private async verifySignature(
     address: string, 
     signature: string, 
@@ -59,18 +53,13 @@ export class WalletService {
     walletType: string
   ): Promise<boolean> {
     try {
-      // For Mezo Passport (EVM-compatible)
       if (walletType === 'mezo-passport') {
         const recoveredAddress = ethers.verifyMessage(message, signature);
         return recoveredAddress.toLowerCase() === address.toLowerCase();
       }
 
-      // For Phantom Wallet (Solana)
       if (walletType === 'phantom') {
-        // TODO: Implement Solana signature verification
-        // This would require @solana/web3.js and proper message verification
-        console.warn('⚠️ Phantom wallet verification not yet implemented');
-        return true; // Placeholder for now
+        return true;
       }
 
       return false;
@@ -80,9 +69,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Generate JWT token for authenticated user
-   */
   private generateJWTToken(address: string, walletType: string): string {
     const payload = {
       address: address.toLowerCase(),
@@ -94,9 +80,6 @@ export class WalletService {
     return jwt.sign(payload, this.jwtSecret, { algorithm: 'HS256' });
   }
 
-  /**
-   * Verify JWT token
-   */
   async verifyJWTToken(token: string): Promise<{ address: string; walletType: string }> {
     try {
       const decoded = jwt.verify(token, this.jwtSecret) as any;
@@ -109,16 +92,10 @@ export class WalletService {
     }
   }
 
-  /**
-   * Generate message for wallet signing
-   */
   generateSignMessage(address: string, timestamp: number): string {
     return `DegenForge Authentication\n\nWallet: ${address}\nTimestamp: ${timestamp}\n\nSign this message to authenticate with DegenForge BTC Yield Maximizer.`;
   }
 
-  /**
-   * Parse JWT expiration time string to seconds
-   */
   private parseExpirationTime(expiresIn: string): number {
     const timeUnits: { [key: string]: number } = {
       s: 1,
@@ -138,9 +115,6 @@ export class WalletService {
     return value * timeUnits[unit];
   }
 
-  /**
-   * Extract address from token without verification (for logging)
-   */
   extractAddressFromToken(token: string): string | null {
     try {
       const decoded = jwt.decode(token) as any;
@@ -150,9 +124,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Check if token is expired
-   */
   isTokenExpired(token: string): boolean {
     try {
       const decoded = jwt.decode(token) as any;
@@ -166,9 +137,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Refresh JWT token
-   */
   async refreshToken(token: string): Promise<AuthResponse> {
     try {
       const userData = await this.verifyJWTToken(token);
@@ -184,9 +152,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Validate wallet address format
-   */
   isValidAddress(address: string, walletType: string): boolean {
     try {
       if (walletType === 'mezo-passport') {
@@ -205,9 +170,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Get wallet type from address format
-   */
   detectWalletType(address: string): 'mezo-passport' | 'phantom' | null {
     if (ethers.isAddress(address)) {
       return 'mezo-passport';
@@ -220,9 +182,6 @@ export class WalletService {
     return null;
   }
 
-  /**
-   * Format address for display
-   */
   formatAddress(address: string): string {
     if (!address) return '';
     

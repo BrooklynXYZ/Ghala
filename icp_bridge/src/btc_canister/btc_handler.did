@@ -5,6 +5,7 @@ type CanisterStats = record {
 };
 type UTXOInfo = record { height : nat64; value : nat64; outpoint : blob };
 service : () -> {
+  admin_clear_btc_state : () -> ();
   generate_btc_address : () -> (text);
   get_btc_address_for_principal : (principal) -> (text);
   get_btc_balance : (text) -> (nat64);

@@ -219,7 +219,7 @@ The response should show `btc_canister_configured: true` and `solana_canister_co
 **Cause**: The Bridge canister couldn't verify your BTC balance. This was caused by the Bridge not passing sufficient cycles to the BTC Handler when querying the Bitcoin canister.
 
 **Solution**:
-1. Ensure the canisters have been deployed with the latest code (see DEPLOY_FIX.md)
+1. Ensure the canisters have been deployed with the latest code
 2. Verify your BTC address has a balance:
    ```bash
    dfx canister call --network ic ph6zi-syaaa-aaaad-acuha-cai get_btc_balance '("YOUR_BTC_ADDRESS")'

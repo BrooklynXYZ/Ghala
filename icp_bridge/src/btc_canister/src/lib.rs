@@ -1,17 +1,42 @@
 use candid::{CandidType, Deserialize, Principal};
-use ic_cdk::api::management_canister::{
-    bitcoin::{BitcoinNetwork, GetBalanceRequest, GetUtxosRequest},
-    ecdsa::{EcdsaCurve, EcdsaKeyId},
+use ic_cdk::api::management_canister::ecdsa::{EcdsaCurve, EcdsaKeyId};
+// Use the Bitcoin canister API (not deprecated management canister API)
+use ic_cdk::api::call::CallResult;
+use ic_cdk::api::management_canister::bitcoin::{
+    BitcoinNetwork, GetBalanceRequest, GetUtxosRequest, GetUtxosResponse,
+    Utxo, MillisatoshiPerByte,
 };
 use ic_stable_structures::{memory_manager::{MemoryManager, VirtualMemory, MemoryId}, StableBTreeMap, DefaultMemoryImpl, Storable, storable::Bound};
 use serde_bytes::ByteBuf;
 use std::cell::RefCell;
 use std::borrow::Cow;
+// Bitcoin transaction building temporarily disabled due to wasm32 compatibility issues
+// TODO: Implement manual transaction building or use wasm-compatible bitcoin library
+// use std::str::FromStr;
+// use bitcoin::{Address, Network, Transaction, TxIn, TxOut, OutPoint, Txid, ScriptBuf, Sequence, Witness, Amount};
+// use bitcoin::blockdata::script::Builder;
+// use bitcoin::sighash::{SighashCache, EcdsaSighashType};
+// use bitcoin::consensus::Encodable;
 
 mod bitcoin_address;
 
 const KEY_NAME: &str = "test_key_1";
-const BTC_NETWORK: BitcoinNetwork = BitcoinNetwork::Testnet;
+// SWITCH TO MAINNET for reliable Bitcoin integration
+const BTC_NETWORK: BitcoinNetwork = BitcoinNetwork::Mainnet;
+
+// Bitcoin canister IDs (not deprecated management canister API)
+const BITCOIN_TESTNET_CANISTER_ID: &str = "g4xu7-jiaaa-aaaan-aaaaq-cai";
+const BITCOIN_MAINNET_CANISTER_ID: &str = "ghsi2-tqaaa-aaaan-aaaca-cai";
+
+// Helper to get the correct Bitcoin canister ID based on network
+fn get_bitcoin_canister_id() -> Principal {
+    let canister_id = match BTC_NETWORK {
+        BitcoinNetwork::Mainnet => BITCOIN_MAINNET_CANISTER_ID,
+        BitcoinNetwork::Testnet => BITCOIN_TESTNET_CANISTER_ID,
+        _ => BITCOIN_TESTNET_CANISTER_ID,
+    };
+    Principal::from_text(canister_id).expect("Invalid Bitcoin canister ID")
+}
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
 struct DerivationPath(Vec<Vec<u8>>);
@@ -96,10 +121,21 @@ async fn generate_btc_address() -> String {
         }
     };
     
+    ic_cdk::println!("=== ADDRESS GENERATION DEBUG ===");
+    ic_cdk::println!("Public key length: {}", public_key_response.public_key.len());
+    ic_cdk::println!("Public key (hex): {}", hex::encode(&public_key_response.public_key));
+    ic_cdk::println!("Derivation path: {:?}", derivation_path.0);
+    ic_cdk::println!("Caller Principal: {}", caller.to_text());
+    
     let btc_address = bitcoin_address::public_key_to_p2pkh(
         &public_key_response.public_key,
         BTC_NETWORK == BitcoinNetwork::Mainnet,
     );
+    
+    ic_cdk::println!("Generated BTC address: {}", btc_address);
+    ic_cdk::println!("Network: {:?}", BTC_NETWORK);
+    ic_cdk::println!("Address format: {}", if BTC_NETWORK == BitcoinNetwork::Mainnet { "Mainnet (1...)" } else { "Testnet (m... or n...)" });
+    ic_cdk::println!("=== END ADDRESS GENERATION ===");
     
     BTC_ADDRESSES.with(|map| {
         map.borrow_mut().insert(caller, btc_address.clone());
@@ -133,25 +169,88 @@ async fn get_btc_balance(address: String) -> u64 {
         ic_cdk::trap("Address cannot be empty");
     }
     
-    ic_cdk::println!("Querying BTC balance for address: {} on network: {:?} with min_confirmations: 6", address, BTC_NETWORK);
+    ic_cdk::println!("=== BTC BALANCE QUERY START (using Bitcoin canister API) ===");
+    ic_cdk::println!("Address: {}", address);
+    ic_cdk::println!("Network: {:?}", BTC_NETWORK);
+    ic_cdk::println!("Bitcoin Canister ID: {}", get_bitcoin_canister_id().to_text());
     
-    match ic_cdk::api::management_canister::bitcoin::bitcoin_get_balance(
-        GetBalanceRequest {
-            address: address.clone(),
-            network: BTC_NETWORK,
-            min_confirmations: Some(6),
-        },
-    )
-    .await
-    {
+    const CYCLES_FOR_BTC_CALL: u64 = 10_000_000_000;
+    
+    // First, check UTXOs to see if transaction is visible
+    ic_cdk::println!("Step 1: Checking UTXOs via Bitcoin canister...");
+    let utxos_request = GetUtxosRequest {
+        address: address.clone(),
+        network: BTC_NETWORK,
+        filter: None,
+    };
+    
+    let bitcoin_canister = get_bitcoin_canister_id();
+    
+    match ic_cdk::api::call::call_with_payment::<(GetUtxosRequest,), (GetUtxosResponse,)>(
+        bitcoin_canister,
+        "bitcoin_get_utxos",
+        (utxos_request,),
+        CYCLES_FOR_BTC_CALL
+    ).await {
+        Ok((utxos_response,)) => {
+            ic_cdk::println!("✅ UTXOs Query Success: {} UTXOs found", utxos_response.utxos.len());
+            for (i, utxo) in utxos_response.utxos.iter().enumerate() {
+                ic_cdk::println!("  UTXO[{}]: value={} sats, height={}", i, utxo.value, utxo.height);
+            }
+            ic_cdk::println!("  Tip height: {}", utxos_response.tip_height);
+        }
+        Err(e) => {
+            ic_cdk::println!("❌ UTXOs Query Failed: {:?}", e);
+        }
+    }
+    
+    // Now try balance with 6 confirmations
+    ic_cdk::println!("Step 2: Querying balance with 6 confirmations via Bitcoin canister...");
+    let request = GetBalanceRequest {
+        address: address.clone(),
+        network: BTC_NETWORK,
+        min_confirmations: Some(6),
+    };
+    
+    match ic_cdk::api::call::call_with_payment::<(GetBalanceRequest,), (u64,)>(
+        bitcoin_canister,
+        "bitcoin_get_balance",
+        (request,),
+        CYCLES_FOR_BTC_CALL
+    ).await {
         Ok((balance,)) => {
-            ic_cdk::println!("Successfully retrieved balance: {} satoshis for address: {}", balance, address);
+            ic_cdk::println!("✅ Balance with 6 confirmations: {} satoshis", balance);
+            ic_cdk::println!("=== BTC BALANCE QUERY END ===");
             balance
         }
         Err(err) => {
-            let error_msg = format!("ICP Bitcoin API Error for address {}: {:?}", address, err);
-            ic_cdk::println!("ERROR: {}", error_msg);
-            ic_cdk::trap(&error_msg);
+            ic_cdk::println!("❌ Balance query failed: {:?}", err);
+            
+            // Try with 0 confirmations as fallback
+            ic_cdk::println!("Step 3: Retrying with 0 confirmations...");
+            let request_zero = GetBalanceRequest {
+                address: address.clone(),
+                network: BTC_NETWORK,
+                min_confirmations: Some(0),
+            };
+            
+            match ic_cdk::api::call::call_with_payment::<(GetBalanceRequest,), (u64,)>(
+                bitcoin_canister,
+                "bitcoin_get_balance",
+                (request_zero,),
+                CYCLES_FOR_BTC_CALL
+            ).await {
+                Ok((balance,)) => {
+                    ic_cdk::println!("✅ Balance with 0 confirmations: {} satoshis", balance);
+                    ic_cdk::println!("=== BTC BALANCE QUERY END ===");
+                    balance
+                }
+                Err(err2) => {
+                    ic_cdk::println!("❌ Balance query with 0 confirmations also failed: {:?}", err2);
+                    ic_cdk::println!("=== BTC BALANCE QUERY END ===");
+                    ic_cdk::trap(&format!("Bitcoin API Error: {:?}, Address: {}", err2, address));
+                }
+            }
         }
     }
 }
@@ -162,17 +261,29 @@ async fn get_utxos(address: String) -> Vec<UTXOInfo> {
         ic_cdk::trap("Address cannot be empty");
     }
     
-    let utxos_result = ic_cdk::api::management_canister::bitcoin::bitcoin_get_utxos(
-        GetUtxosRequest {
+    ic_cdk::println!("Getting UTXOs from Bitcoin canister for address: {}", address);
+    
+    let bitcoin_canister = get_bitcoin_canister_id();
+    
+    // Cycle cost for Bitcoin API calls
+    // 10 billion cycles is plenty for testnet requests
+    const CYCLES_FOR_BTC_CALL: u64 = 10_000_000_000;
+    
+    let utxos_result = ic_cdk::api::call::call_with_payment::<(GetUtxosRequest,), (GetUtxosResponse,)>(
+        bitcoin_canister,
+        "bitcoin_get_utxos",
+        (GetUtxosRequest {
             address: address.clone(),
             network: BTC_NETWORK,
             filter: None,
-        },
+        },),
+        CYCLES_FOR_BTC_CALL,
     )
     .await;
     
     match utxos_result {
         Ok((response,)) => {
+            ic_cdk::println!("✅ Found {} UTXOs", response.utxos.len());
             response.utxos.into_iter().map(|utxo| {
                 let mut outpoint = utxo.outpoint.txid.to_vec();
                 outpoint.extend_from_slice(&utxo.outpoint.vout.to_le_bytes());
@@ -184,9 +295,37 @@ async fn get_utxos(address: String) -> Vec<UTXOInfo> {
             }).collect()
         }
         Err(err) => {
-            ic_cdk::trap(&format!("Failed to fetch UTXOs for address {}: {:?}", address, err));
+            ic_cdk::trap(&format!("Bitcoin Canister API Error: {:?}, Address: {}", err, address));
         }
     }
+}
+
+#[ic_cdk::update]
+fn admin_clear_btc_state() {
+    let caller = ic_cdk::caller();
+    if !ic_cdk::api::is_controller(&caller) {
+        ic_cdk::trap("Only the controller can clear BTC state");
+    }
+
+    BTC_ADDRESSES.with(|map| {
+        let mut map = map.borrow_mut();
+        // Collect keys first to avoid borrowing issues while removing
+        let keys: Vec<_> = map.iter().map(|(k, _)| k).collect();
+        for k in keys {
+            map.remove(&k);
+        }
+    });
+
+    DERIVATION_PATHS.with(|map| {
+        let mut map = map.borrow_mut();
+        // Collect keys first to avoid borrowing issues while removing
+        let keys: Vec<_> = map.iter().map(|(k, _)| k).collect();
+        for k in keys {
+            map.remove(&k);
+        }
+    });
+    
+    ic_cdk::println!("BTC addresses and derivation paths cleared by admin.");
 }
 
 #[ic_cdk::update]
@@ -221,9 +360,20 @@ async fn sign_transaction(message_hash: ByteBuf) -> ByteBuf {
     ByteBuf::from(signature)
 }
 
+// fn transform_network(network: BitcoinNetwork) -> Network {
+//     match network {
+//         BitcoinNetwork::Mainnet => Network::Bitcoin,
+//         BitcoinNetwork::Testnet => Network::Testnet,
+//         BitcoinNetwork::Regtest => Network::Regtest,
+//     }
+// }
+
 #[ic_cdk::update]
 async fn send_btc(_to_address: String, _amount_satoshis: u64) -> String {
-    ic_cdk::trap("Bitcoin sending not implemented. Use external wallet for now.");
+    // TODO: Bitcoin transaction building temporarily disabled due to wasm32 compatibility issues with bitcoin crate
+    // The bitcoin crate requires native compilation (secp256k1-sys) which doesn't work with wasm32-unknown-unknown
+    // Need to implement manual transaction building or use a wasm-compatible bitcoin library
+    ic_cdk::trap("Bitcoin transaction sending is temporarily disabled. Manual transaction building needs to be implemented for wasm32 compatibility.")
 }
 
 #[ic_cdk::query]
