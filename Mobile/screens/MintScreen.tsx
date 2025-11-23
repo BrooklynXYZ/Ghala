@@ -121,7 +121,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     }
 
     return '';
-  }, [walletBalance, minMintAmount]);
+  }, [walletBalance]);
 
   useEffect(() => {
     if (touched) {
@@ -166,16 +166,16 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
       const initTxHash = await ICPBridgeService.initiateBridgeTransfer(btcValue);
       console.log('Init Tx:', initTxHash);
 
-      // Step 2: Parse Logs (Mocking this part as we need an EVM indexer)
+      // Step 2: Parse Logs
       setMintStep(2);
       setStepStatus('Identifying Bridge Address...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate log parsing
-      const mockMezoBtcAddress = "tb1q4280xaxzd80af93nyy9m65ykhrz64c4nXZ_MOCK"; 
+      const mezoBtcAddress = await ICPBridgeService.waitForDepositRevealedEvent(initTxHash);
+      console.log('Mezo BTC Address:', mezoBtcAddress);
 
       // Step 3: Send BTC to that address
       setMintStep(3);
-      setStepStatus(`Sending BTC to ${mockMezoBtcAddress.slice(0, 8)}...`);
-      const btcTxId = await ICPBridgeService.sendBTCToAddress(mockMezoBtcAddress, btcValue);
+      setStepStatus(`Sending BTC to ${mezoBtcAddress.slice(0, 8)}...`);
+      const btcTxId = await ICPBridgeService.sendBTCToAddress(mezoBtcAddress, btcValue);
       console.log('BTC Sent:', btcTxId);
 
       // Step 4: Submit Proof (Mocking Off-chain Relayer)
@@ -255,7 +255,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     setBtcAmount(cleaned);
   }, []);
 
-  const isValid = btcValue > 0 && !error && btcValue >= minMintAmount && btcValue <= walletBalance;
+  const isValid = btcValue > 0 && !error && btcValue >= 0.0000001 && btcValue <= walletBalance;
 
   if (isConfirmed) {
     return (

@@ -15,9 +15,20 @@ import {
 } from '@/utils/icpAgent';
 import { validateCanisterConfig } from '@/canister-ids.config';
 import logger from '@/utils/logger';
+import { ethers } from 'ethers';
+
+const MEZO_RPC_URL = 'https://rpc-http.mezo.boar.network';
 
 class ICPBridgeService {
   private isInitialized = false;
+  private provider: ethers.JsonRpcProvider | null = null;
+
+  private getProvider(): ethers.JsonRpcProvider {
+    if (!this.provider) {
+      this.provider = new ethers.JsonRpcProvider(MEZO_RPC_URL);
+    }
+    return this.provider;
+  }
 
   async initialize(identity?: Identity, retries = 3): Promise<void> {
     if (!validateCanisterConfig()) {
@@ -119,6 +130,45 @@ class ICPBridgeService {
       return txHash;
     } catch (error) {
       logger.error('Error initiating bridge transfer', error);
+      throw error;
+    }
+  }
+
+  async waitForDepositRevealedEvent(txHash: string): Promise<string> {
+    try {
+      logger.debug('Waiting for transaction receipt...', { txHash });
+      
+      // Wait for transaction receipt
+      const provider = this.getProvider();
+      const receipt = await provider.waitForTransaction(txHash, 1, 60000); // 1 confirm, 60s timeout
+      if (!receipt) throw new Error('Transaction receipt not found');
+
+      // Parse logs for DepositRevealed event
+      const iface = new ethers.Interface([
+        'event DepositRevealed(address indexed depositor, bytes32 indexed depositId, string btcDepositAddress)'
+      ]);
+
+      for (const log of receipt.logs) {
+        try {
+          const parsedLog = iface.parseLog({
+            topics: [...log.topics],
+            data: log.data
+          });
+          
+          if (parsedLog && parsedLog.name === 'DepositRevealed') {
+            const btcAddress = parsedLog.args.btcDepositAddress;
+            logger.debug('Found DepositRevealed event', { btcAddress });
+            return btcAddress;
+          }
+        } catch (e) {
+          // Ignore logs that don't match
+          continue;
+        }
+      }
+      
+      throw new Error('DepositRevealed event not found in transaction logs');
+    } catch (error) {
+      logger.error('Error parsing Mezo logs', error);
       throw error;
     }
   }

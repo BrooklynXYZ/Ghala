@@ -499,6 +499,68 @@ fn build_open_trove_calldata(musd_amount: u64, upper_hint: &str, lower_hint: &st
     calldata
 }
 
+fn build_approve_calldata(spender: &str, amount: u64) -> Vec<u8> {
+    // Function selector: approve(address,uint256) -> 0x095ea7b3
+    let function_selector = calculate_function_selector("approve(address,uint256)");
+    let mut calldata = function_selector;
+
+    // Parameter 1: spender (address)
+    let spender_bytes = hex::decode(spender.trim_start_matches("0x"))
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("Invalid spender address '{}': {:?}", spender, e));
+        });
+    let mut spender_padded = vec![0u8; 12];
+    spender_padded.extend_from_slice(&spender_bytes);
+    calldata.extend_from_slice(&spender_padded);
+
+    // Parameter 2: amount (uint256)
+    let mut amount_bytes = vec![0u8; 24];
+    amount_bytes.extend_from_slice(&amount.to_be_bytes());
+    calldata.extend_from_slice(&amount_bytes);
+
+    calldata
+}
+
+#[ic_cdk::update]
+async fn approve_tbtc(amount: u64) -> String {
+    let caller = ic_cdk::caller();
+    let canister_eth_address = get_canister_eth_address(caller).await;
+    
+    // Build calldata for tBTC.approve(BORROWER_MANAGER_ADDRESS, amount)
+    let calldata = build_approve_calldata(BORROWER_MANAGER_ADDRESS, amount);
+    
+    let nonce = get_and_increment_nonce(&canister_eth_address).await.unwrap();
+    
+    // EIP-1559 Fees
+    let max_priority_fee = DEFAULT_PRIORITY_FEE;
+    let max_fee = DEFAULT_GAS_PRICE;
+    let gas_limit = DEFAULT_GAS_LIMIT;
+
+    // Send to TBTC_TOKEN_ADDRESS
+    let (tx_hash_hex, signed_tx) = sign_eip1559_transaction(
+        caller,
+        KEY_NAME,
+        MEZO_CHAIN_ID,
+        nonce,
+        max_priority_fee,
+        max_fee,
+        gas_limit,
+        TBTC_TOKEN_ADDRESS,
+        0, // Value = 0 for ERC20 approve
+        &calldata
+    ).await;
+
+    let raw_tx_hex = format!("0x{}", hex::encode(&signed_tx));
+    let tx_hash = match send_evm_transaction_via_chain_fusion(&raw_tx_hex).await {
+        Ok(hash) => hash,
+        Err(err) => {
+             ic_cdk::trap(&format!("Failed to send approval tx: {}", err));
+        }
+    };
+    
+    tx_hash
+}
+
 // Helper to compute y_parity for EIP-1559
 fn compute_y_parity(prehash: &[u8], sig: &[u8], pubkey: &[u8]) -> u64 {
     let orig_key = VerifyingKey::from_sec1_bytes(pubkey).unwrap_or_else(|_| {
@@ -685,7 +747,7 @@ async fn mint_musd_on_mezo(btc_amount: u64) -> MintResponse {
         max_fee,
         gas_limit,
         BORROW_MANAGER_ADDRESS,
-        btc_amount, // Value = Collateral (tBTC)
+        0, // Value = 0 (Using tBTC via allowance, not native BTC)
         &calldata
     ).await;
     
