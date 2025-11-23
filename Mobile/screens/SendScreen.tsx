@@ -11,6 +11,10 @@ import {
 import Animated, {
   FadeInDown,
   FadeInUp,
+  FadeInLeft,
+  SlideInRight,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -165,12 +169,15 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
           </Animated.Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(600).delay(500)}>
+        <Animated.View entering={FadeInDown.duration(600).delay(500).springify()}>
           <SectionCard borderRadius="none" padding="xxxl">
             <Text style={[styles.resultLabel, { color: themeColors.textSecondary }]}>Amount Sent</Text>
-            <Text style={[styles.resultAmount, { color: themeColors.textPrimary }]}>
+            <Animated.Text 
+              entering={FadeInUp.delay(600).springify()}
+              style={[styles.resultAmount, { color: themeColors.textPrimary }]}
+            >
               {amountValue.toFixed(2)}
-            </Text>
+            </Animated.Text>
             <Text style={[styles.resultUnit, { color: themeColors.textTertiary }]}>mUSD</Text>
           </SectionCard>
         </Animated.View>
@@ -183,24 +190,28 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
               value={`${recipientAddress.slice(0, 10)}...${recipientAddress.slice(-8)}`}
               icon="user"
               themeColors={themeColors}
+              delay={700}
             />
             <DetailRow
               label="Amount"
               value={`${amountValue.toFixed(2)} mUSD`}
               icon="dollar-sign"
               themeColors={themeColors}
+              delay={800}
             />
             <DetailRow
               label="Network Fee"
               value={`${networkFee.toFixed(3)} mUSD`}
               icon="zap"
               themeColors={themeColors}
+              delay={900}
             />
             <DetailRow
               label="Total Cost"
               value={`${totalCost.toFixed(2)} mUSD`}
               icon="credit-card"
               themeColors={themeColors}
+              delay={1000}
             />
           </SectionCard>
         </Animated.View>
@@ -208,16 +219,19 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
         <Animated.View entering={FadeInDown.duration(600).delay(700)}>
           <SectionCard borderRadius="none" padding="xl">
             <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Transaction Proof</Text>
-            <TouchableOpacity style={styles.txHashContainer}>
+            <Animated.View 
+              entering={FadeInLeft.delay(1100).springify()}
+              style={styles.txHashContainer}
+            >
               <Feather name="shield" size={16} color={themeColors.textSecondary} />
               <Text style={[styles.txHashLabel, { color: themeColors.textSecondary }]}>TX Hash</Text>
-              <View style={styles.txHashValue}>
+              <TouchableOpacity style={styles.txHashValue}>
                 <Text style={[styles.txHashText, { color: themeColors.textPrimary }]}>
                   {mockTxHash.slice(0, 10)}...{mockTxHash.slice(-8)}
                 </Text>
                 <Feather name="copy" size={14} color={themeColors.textTertiary} />
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </Animated.View>
           </SectionCard>
         </Animated.View>
 
@@ -248,7 +262,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
       >
-        <Animated.View entering={FadeInDown.duration(500).delay(100)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(500).delay(100).springify()} style={styles.header}>
           <Text style={[styles.title, { color: themeColors.textPrimary }]}>
             Send mUSD
           </Text>
@@ -257,7 +271,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
           </Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(500).delay(200)}>
+        <Animated.View entering={FadeInDown.duration(500).delay(200).springify()}>
           <SectionCard borderRadius="none" padding="xl">
             <Text style={[styles.inputLabel, { color: themeColors.textPrimary }]}>
               Recipient Address
@@ -280,7 +294,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
           </SectionCard>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(500).delay(300)}>
+        <Animated.View entering={FadeInDown.duration(500).delay(300).springify()}>
           <SectionCard borderRadius="none" padding="xl">
             <View style={styles.inputHeader}>
               <Text style={[styles.inputLabel, { color: themeColors.textPrimary }]}>
@@ -332,7 +346,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
         </Animated.View>
 
         {amountValue > 0 && isValid && (
-          <Animated.View entering={FadeInDown.duration(500).delay(400)}>
+          <Animated.View entering={FadeInDown.duration(500).delay(400).springify()}>
             <SectionCard borderRadius="none" padding="xl">
               <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Transaction Summary</Text>
               <FeeRow
@@ -340,12 +354,14 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
                 value={`${amountValue.toFixed(2)} mUSD`}
                 icon="arrow-up"
                 themeColors={themeColors}
+                delay={500}
               />
               <FeeRow
                 label="Network Fee"
                 value={`${networkFee.toFixed(3)} mUSD`}
                 icon="zap"
                 themeColors={themeColors}
+                delay={600}
               />
               <View style={[styles.feeDivider, { backgroundColor: themeColors.border }]} />
               <FeeRow
@@ -354,6 +370,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onNavigate }) => {
                 icon="credit-card"
                 bold
                 themeColors={themeColors}
+                delay={700}
               />
             </SectionCard>
           </Animated.View>
@@ -389,16 +406,20 @@ interface DetailRowProps {
   value: string;
   icon?: string;
   themeColors: ReturnType<typeof useTheme>['colors'];
+  delay?: number;
 }
 
-const DetailRow = React.memo<DetailRowProps>(({ label, value, icon, themeColors }) => (
-  <View style={styles.detailRow}>
+const DetailRow = React.memo<DetailRowProps>(({ label, value, icon, themeColors, delay = 0 }) => (
+  <Animated.View 
+    entering={FadeInLeft.delay(delay).springify().damping(14)}
+    style={styles.detailRow}
+  >
     <View style={styles.detailLeft}>
       {icon && <Feather name={icon as any} size={16} color={themeColors.textSecondary} />}
       <Text style={[styles.detailLabel, { color: themeColors.textSecondary }]}>{label}</Text>
     </View>
     <Text style={[styles.detailValue, { color: themeColors.textPrimary }]}>{value}</Text>
-  </View>
+  </Animated.View>
 ));
 
 DetailRow.displayName = 'DetailRow';
@@ -410,10 +431,14 @@ interface FeeRowProps {
   icon?: string;
   bold?: boolean;
   themeColors: ReturnType<typeof useTheme>['colors'];
+  delay?: number;
 }
 
-const FeeRow = React.memo<FeeRowProps>(({ label, value, icon, bold, themeColors }) => (
-  <View style={styles.feeRow}>
+const FeeRow = React.memo<FeeRowProps>(({ label, value, icon, bold, themeColors, delay = 0 }) => (
+  <Animated.View 
+    entering={FadeInLeft.delay(delay).springify().damping(14)}
+    style={styles.feeRow}
+  >
     <View style={styles.feeLeft}>
       {icon && (
         <Feather
@@ -433,7 +458,7 @@ const FeeRow = React.memo<FeeRowProps>(({ label, value, icon, bold, themeColors 
       bold && styles.feeValueBold,
       { color: themeColors.textPrimary }
     ]}>{value}</Text>
-  </View>
+  </Animated.View>
 ));
 
 FeeRow.displayName = 'FeeRow';

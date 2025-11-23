@@ -10,6 +10,7 @@ import Animated, {
   FadeInDown,
   FadeInUp,
   FadeIn,
+  FadeInLeft,
   SlideInRight,
   useAnimatedStyle,
   useSharedValue,
@@ -345,18 +346,18 @@ export const BridgeScreen: React.FC<BridgeScreenProps> = ({ onNavigate }) => {
 
       {/* Bridge Details */}
       <Animated.View
-        entering={FadeInDown.duration(500).delay(500)}
+        entering={FadeInDown.duration(500).delay(500).springify()}
         style={styles.section}
       >
         <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
           Bridge Details
         </Text>
         <SectionCard borderRadius="none" padding="xl">
-          <DetailRow label="Amount" value={`${bridgeAmount.toLocaleString()} mUSD`} icon="dollar-sign" />
-          <DetailRow label="From" value="Mezo Network" icon="hexagon" />
-          <DetailRow label="To" value="Solana" icon="zap" />
-          <DetailRow label="Bridge Fee" value="0.5%" icon="percent" />
-          <DetailRow label="Estimated Time" value="~5 minutes" icon="clock" />
+          <DetailRow label="Amount" value={`${bridgeAmount.toLocaleString()} mUSD`} icon="dollar-sign" themeColors={themeColors} delay={600} />
+          <DetailRow label="From" value="Mezo Network" icon="hexagon" themeColors={themeColors} delay={700} />
+          <DetailRow label="To" value="Solana" icon="zap" themeColors={themeColors} delay={800} />
+          <DetailRow label="Bridge Fee" value="0.5%" icon="percent" themeColors={themeColors} delay={900} />
+          <DetailRow label="Estimated Time" value="~5 minutes" icon="clock" themeColors={themeColors} delay={1000} />
         </SectionCard>
       </Animated.View>
 
@@ -533,16 +534,21 @@ interface DetailRowProps {
   label: string;
   value: string;
   icon?: string;
+  themeColors: ReturnType<typeof useTheme>['colors'];
+  delay?: number;
 }
 
-const DetailRow = React.memo<DetailRowProps>(({ label, value, icon }) => (
-  <View style={styles.detailRow}>
+const DetailRow = React.memo<DetailRowProps>(({ label, value, icon, themeColors, delay = 0 }) => (
+  <Animated.View 
+    entering={FadeInLeft.delay(delay).springify().damping(14)}
+    style={styles.detailRow}
+  >
     <View style={styles.detailLeft}>
-      {icon && <Feather name={icon as any} size={16} color={Colors.text.secondary} />}
-      <Text style={styles.detailLabel}>{label}</Text>
+      {icon && <Feather name={icon as any} size={16} color={themeColors.textSecondary} />}
+      <Text style={[styles.detailLabel, { color: themeColors.textSecondary }]}>{label}</Text>
     </View>
-    <Text style={styles.detailValue}>{value}</Text>
-  </View>
+    <Text style={[styles.detailValue, { color: themeColors.textPrimary }]}>{value}</Text>
+  </Animated.View>
 ));
 
 DetailRow.displayName = 'DetailRow';

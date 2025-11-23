@@ -12,6 +12,7 @@ import {
 import Animated, {
   FadeInDown,
   FadeInUp,
+  FadeInLeft,
   SlideInRight,
   useSharedValue,
   withSpring,
@@ -35,10 +36,10 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { SectionCard } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { SuccessToast } from '@/components/ui/SuccessToast';
+import { CustomAlert } from '@/components/ui/CustomAlert';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWallet } from '@/contexts/WalletProvider';
 import ICPBridgeService from '@/services/ICPBridgeService';
-import TransactionMonitorService from '@/services/TransactionMonitorService';
 import transactionStore from '@/utils/transactionStore';
 import logger from '@/utils/logger';
 
@@ -84,9 +85,11 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     if (!address) return;
     try {
       const btcAddr = await ICPBridgeService.getBTCDepositAddress();
-      setBtcDepositAddress(btcAddr);
-      const { btc } = await ICPBridgeService.getBTCBalance(btcAddr);
-      setWalletBalance(parseFloat(btc));
+      if (btcAddr) {
+        setBtcDepositAddress(btcAddr);
+        const { btc } = await ICPBridgeService.getBTCBalance(btcAddr);
+        setWalletBalance(parseFloat(btc));
+      }
     } catch (error) {
       logger.error('Failed to load BTC balance', error);
       setWalletBalance(0);
@@ -129,10 +132,7 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     }
   }, [btcAmount, touched, validateAmount]);
 
-  const [mintStep, setMintStep] = useState(0);
   const [stepStatus, setStepStatus] = useState('');
-
-  // ... existing state ...
 
   const handleConfirm = useCallback(async () => {
     const validationError = validateAmount(btcAmount);
@@ -143,10 +143,8 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     }
 
     setIsLoading(true);
-    setMintStep(1);
-    setStepStatus('Requesting Mezo Deposit Address...');
     progressValue.value = 0;
-    progressValue.value = withTiming(1, { duration: 15000 }); // Longer for multi-step
+    progressValue.value = withTiming(1, { duration: 30000 });
 
     const btcValue = parseFloat(btcAmount);
     const musdAmount = usdValue * ltvRatio - (usdValue * ltvRatio * fee);
@@ -159,44 +157,38 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
     });
 
     try {
+      setStepStatus('Initializing secure bridge session...');
       await ICPBridgeService.initialize();
 
-      // Step 1: Initiate Deposit on Mezo (Get EVM Tx to find logs)
+      // Step 1: Initiate Deposit
       setStepStatus('Requesting Mezo Deposit Address...');
       const initTxHash = await ICPBridgeService.initiateBridgeTransfer(btcValue);
-      console.log('Init Tx:', initTxHash);
 
       // Step 2: Parse Logs
-      setMintStep(2);
       setStepStatus('Identifying Bridge Address...');
       const mezoBtcAddress = await ICPBridgeService.waitForDepositRevealedEvent(initTxHash);
-      console.log('Mezo BTC Address:', mezoBtcAddress);
 
-      // Step 3: Send BTC to that address
-      setMintStep(3);
+      // Step 3: Send BTC
       setStepStatus(`Sending BTC to ${mezoBtcAddress.slice(0, 8)}...`);
-      const btcTxId = await ICPBridgeService.sendBTCToAddress(mezoBtcAddress, btcValue);
-      console.log('BTC Sent:', btcTxId);
+      await ICPBridgeService.sendBTCToAddress(mezoBtcAddress, btcValue);
 
-      // Step 4: Submit Proof (Mocking Off-chain Relayer)
-      setMintStep(4);
+      // Step 4: Proof
       setStepStatus('Waiting for BTC Confirmations & Proving...');
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate proof generation time
+      // Waiting for confirmations - in a real mainnet scenario this would be longer
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
-      // Step 5: Open Trove (Finalize)
-      setMintStep(5);
+      // Step 5: Open Trove
       setStepStatus('Opening Trove on Mezo...');
-      
-      // This is the existing logic (calls openTrove)
+
       let result = await ICPBridgeService.mintMUSDOnMezo(btcValue);
-      
+
       if (result.transaction_hash) {
         await transactionStore.updateTransaction(tx.id, {
           mezoTxHash: result.transaction_hash,
         });
       }
 
-      // Poll for finalization if pending
+      // Poll for finalization
       const MAX_POLLS = 60;
       let polls = 0;
       while (result.status === 'pending' && polls < MAX_POLLS) {
@@ -221,21 +213,19 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
         setIsConfirmed(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        throw new Error(result.status === 'pending' ? 'Transaction timed out' : 'Mint failed on chain');
+        throw new Error('Transaction failed or timed out');
       }
 
-      TransactionMonitorService.startMonitoring(tx.id, 'mint');
     } catch (error: any) {
-      logger.error('Mint failed', error);
+      logger.error('Mint flow error', error);
+      const errorMessage = error.message || 'Failed to mint mUSD';
+      setError(errorMessage);
       await transactionStore.updateTransaction(tx.id, {
         status: 'failed',
-        errorMessage: error.message || 'Failed to mint mUSD',
+        errorMessage,
       });
-      setError(error.message || 'Failed to mint mUSD');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsLoading(false);
-      setMintStep(0);
       setStepStatus('');
     }
   }, [btcAmount, validateAmount, progressValue, usdValue, ltvRatio, fee]);
@@ -246,12 +236,9 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
   }, [walletBalance]);
 
   const handleAmountChange = useCallback((value: string) => {
-    // Only allow numbers and decimal point
     const cleaned = value.replace(/[^0-9.]/g, '');
-    // Only allow one decimal point
     const parts = cleaned.split('.');
     if (parts.length > 2) return;
-
     setBtcAmount(cleaned);
   }, []);
 
@@ -289,50 +276,67 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(600).delay(600)}>
-          <SectionCard borderRadius="none" padding="xl">
-            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Transaction Details</Text>
+          <SectionCard borderRadius="none" padding="lg">
+            <Animated.Text
+              entering={FadeInLeft.delay(700).springify()}
+              style={[styles.sectionTitle, { color: themeColors.textPrimary }]}
+            >
+              Transaction Details
+            </Animated.Text>
             <DetailRow
               label="Amount Minted"
               value={`${(mintResult?.musdAmount || netMinted).toFixed(2)} mUSD`}
               icon="check-circle"
               themeColors={themeColors}
+              delay={800}
             />
             <DetailRow
               label="BTC Collateral"
               value={`${btcAmount} BTC`}
               icon="lock"
               themeColors={themeColors}
+              delay={900}
             />
             <DetailRow
               label="LTV Ratio"
               value={mintResult?.newLtv || `${(ltvRatio * 100).toFixed(0)}%`}
               icon="trending-up"
               themeColors={themeColors}
+              delay={1000}
             />
           </SectionCard>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(600).delay(700)}>
-          <SectionCard borderRadius="none" padding="xl">
-            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Transaction Proof</Text>
+          <SectionCard borderRadius="none" padding="lg">
+            <Animated.Text
+              entering={FadeInLeft.delay(1100).springify()}
+              style={[styles.sectionTitle, { color: themeColors.textPrimary }]}
+            >
+              Transaction Proof
+            </Animated.Text>
             <ProofBox
               label="Transaction Hash"
               value={mintResult?.txHash || '0x...'}
               themeColors={themeColors}
+              delay={1200}
             />
-            <View style={[styles.detailRow, { marginTop: Spacing.md }]}>
+            <Animated.View
+              entering={FadeInLeft.delay(1300).springify()}
+              style={[styles.detailRow, { marginTop: Spacing.sm }]}
+            >
               <View style={styles.detailLeft}>
                 <Feather name="check-circle" size={16} color={Colors.semantic.success} />
                 <Text style={[styles.detailLabel, { color: themeColors.textSecondary }]}>
                   Minted via ICP Bridge
                 </Text>
               </View>
-            </View>
+            </Animated.View>
           </SectionCard>
         </Animated.View>
 
         <Animated.View
-          entering={FadeInUp.duration(600).delay(800)}
+          entering={FadeInUp.duration(600).delay(1400)}
           style={styles.actionsSection}
         >
           <ActionButton variant="accent" fullWidth onPress={() => onNavigate('Bridge')}>
@@ -366,6 +370,15 @@ export const MintScreen: React.FC<MintScreenProps> = ({ onNavigate }) => {
             Deposit BTC collateral to mint stablecoin
           </Text>
         </Animated.View>
+
+        {/* Error Alert */}
+        <CustomAlert
+          visible={!!error}
+          title="Mint Error"
+          message={error}
+          type="error"
+          onConfirm={() => setError('')}
+        />
 
         {walletBalance === 0 && btcDepositAddress && (
           <Animated.View entering={FadeInDown.duration(500).delay(150)}>
@@ -658,7 +671,7 @@ const SuccessIcon: React.FC = () => {
           pulseStyle,
         ]}
       >
-        <Feather name="check" size={64} color={Colors.semantic.success} />
+        <Feather name="check" size={56} color={Colors.semantic.success} />
       </Animated.View>
     </Animated.View>
   );
@@ -726,12 +739,6 @@ const PremiumAmountCard: React.FC<{ value: number; themeColors: ReturnType<typeo
               mUSD
             </Text>
           </View>
-        </View>
-
-        <View style={styles.decorativeElements}>
-          <View style={[styles.decorativeDot, { backgroundColor: Colors.accent.primary }]} />
-          <View style={[styles.decorativeDot, { backgroundColor: Colors.accent.primary }]} />
-          <View style={[styles.decorativeDot, { backgroundColor: Colors.accent.primary }]} />
         </View>
       </View>
     </Animated.View>
@@ -813,16 +820,20 @@ interface DetailRowProps {
   value: string;
   icon?: string;
   themeColors: ReturnType<typeof useTheme>['colors'];
+  delay?: number;
 }
 
-const DetailRow = React.memo<DetailRowProps>(({ label, value, icon, themeColors }) => (
-  <View style={styles.detailRow}>
+const DetailRow = React.memo<DetailRowProps>(({ label, value, icon, themeColors, delay = 0 }) => (
+  <Animated.View
+    entering={FadeInLeft.delay(delay).springify().damping(14)}
+    style={styles.detailRow}
+  >
     <View style={styles.detailLeft}>
       {icon && <Feather name={icon as any} size={16} color={themeColors.textSecondary} />}
       <Text style={[styles.detailLabel, { color: themeColors.textSecondary }]}>{label}</Text>
     </View>
     <Text style={[styles.detailValue, { color: themeColors.textPrimary }]}>{value}</Text>
-  </View>
+  </Animated.View>
 ));
 
 DetailRow.displayName = 'DetailRow';
@@ -832,10 +843,14 @@ interface ProofBoxProps {
   label: string;
   value: string;
   themeColors: ReturnType<typeof useTheme>['colors'];
+  delay?: number;
 }
 
-const ProofBox = React.memo<ProofBoxProps>(({ label, value, themeColors }) => (
-  <View style={styles.proofRow}>
+const ProofBox = React.memo<ProofBoxProps>(({ label, value, themeColors, delay = 0 }) => (
+  <Animated.View
+    entering={FadeInLeft.delay(delay).springify().damping(14)}
+    style={styles.proofRow}
+  >
     <View style={styles.proofLeft}>
       <Feather name="shield" size={16} color={themeColors.textSecondary} />
       <Text style={[styles.proofLabel, { color: themeColors.textSecondary }]}>{label}</Text>
@@ -846,7 +861,7 @@ const ProofBox = React.memo<ProofBoxProps>(({ label, value, themeColors }) => (
       </Text>
       <Feather name="copy" size={14} color={themeColors.textTertiary} />
     </TouchableOpacity>
-  </View>
+  </Animated.View>
 ));
 
 ProofBox.displayName = 'ProofBox';
@@ -1052,35 +1067,36 @@ const styles = StyleSheet.create({
   },
   actionsSection: {
     gap: Spacing.md,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xxl,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
   bottomSpacer: {
-    height: 120,
+    height: 80,
   },
   successSection: {
     alignItems: 'center',
-    marginBottom: Spacing.xxxxl,
-    paddingTop: Spacing.xxxxl + Spacing.md,
-    paddingBottom: Spacing.xxxl,
+    marginBottom: Spacing.lg,
+    paddingTop: Spacing.xxxl,
+    paddingBottom: Spacing.lg,
   },
   successIcon: {
-    width: 120,
-    height: 120,
+    width: 96,
+    height: 96,
     borderWidth: 3,
     borderColor: Colors.semantic.success,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing.lg,
     shadowColor: Colors.semantic.success,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 12,
+    borderRadius: 48,
   },
   successTitle: {
-    ...Typography.h1,
-    marginBottom: Spacing.sm,
+    ...Typography.h2,
+    marginBottom: Spacing.xs,
     fontWeight: '700',
     letterSpacing: -0.5,
   },
@@ -1091,8 +1107,8 @@ const styles = StyleSheet.create({
   },
   premiumCard: {
     borderWidth: 2,
-    paddingVertical: Spacing.xxxxl,
-    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
     position: 'relative',
     overflow: 'hidden',
     shadowColor: '#000',
@@ -1100,6 +1116,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+    marginBottom: Spacing.lg,
   },
   shimmerContainer: {
     position: 'absolute',
@@ -1121,29 +1138,29 @@ const styles = StyleSheet.create({
   },
   premiumLabel: {
     ...Typography.labelMedium,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 2,
     fontWeight: '600',
   },
   premiumAmount: {
-    fontSize: 56,
+    fontSize: 48,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: -2,
-    lineHeight: 64,
+    lineHeight: 56,
   },
   unitContainer: {
     alignItems: 'center',
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
   },
   unitBadge: {
     borderWidth: 2,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xxs,
     backgroundColor: 'rgba(234, 193, 25, 0.05)',
   },
   premiumUnit: {
@@ -1183,7 +1200,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   detailLeft: {
     flexDirection: 'row',
@@ -1200,7 +1217,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   proofLeft: {
     flexDirection: 'row',
@@ -1217,6 +1234,7 @@ const styles = StyleSheet.create({
   },
   proofText: {
     ...Typography.mono,
+    fontSize: 13,
   },
   depositAddressSection: {
     gap: Spacing.md,

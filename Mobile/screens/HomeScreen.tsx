@@ -203,16 +203,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
     >
       {/* Balance Card */}
       <Animated.View
-        entering={FadeInDown.duration(500).delay(100)}
+        entering={FadeInDown.duration(500).delay(100).springify()}
         style={styles.cardContainer}
       >
-        <BalanceCard borderRadius="xxl" padding="xl">
-          <View style={styles.cardOverlay} />
+        <BalanceCard borderRadius="xxl" padding="xl" style={{ backgroundColor: themeColors.surface, borderColor: themeColors.border }}>
+          <View style={[styles.cardOverlay, { backgroundColor: themeColors.surfaceSecondary }]} />
           <View style={styles.balanceSection}>
-            <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
+            <Text style={[styles.balanceLabel, { color: themeColors.textSecondary }]}>TOTAL BALANCE</Text>
             <Animated.Text
-              entering={FadeInUp.duration(700).delay(300)}
-              style={styles.balanceValue}
+              entering={FadeInUp.duration(700).delay(300).springify()}
+              style={[styles.balanceValue, { color: themeColors.textPrimary }]}
             >
               ${walletData.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Animated.Text>
@@ -227,14 +227,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
             )}
           </View>
 
-          <View style={styles.cardFooter}>
+          <View style={[styles.cardFooter, { borderTopColor: themeColors.border }]}>
             <View style={styles.assetInfo}>
-              <Text style={styles.assetLabel}>BTC COLLATERAL</Text>
-              <Text style={styles.assetValue}>{walletData.btcCollateral.toFixed(4)} BTC</Text>
+              <Text style={[styles.assetLabel, { color: themeColors.textSecondary }]}>BTC COLLATERAL</Text>
+              <Text style={[styles.assetValue, { color: themeColors.textPrimary }]}>{walletData.btcCollateral.toFixed(4)} BTC</Text>
             </View>
             <View style={styles.assetInfo}>
-              <Text style={styles.assetLabel}>mUSD BALANCE</Text>
-              <Text style={styles.assetValue}>${walletData.musdBalance.toLocaleString()}</Text>
+              <Text style={[styles.assetLabel, { color: themeColors.textSecondary }]}>mUSD BALANCE</Text>
+              <Text style={[styles.assetValue, { color: themeColors.textPrimary }]}>${walletData.musdBalance.toLocaleString()}</Text>
             </View>
           </View>
         </BalanceCard>
@@ -242,7 +242,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
 
       {/* Quick Actions */}
       <Animated.View
-        entering={FadeInDown.duration(500).delay(200)}
+        entering={FadeInDown.duration(500).delay(200).springify()}
         style={styles.quickSection}
       >
         <View style={styles.quickHeader}>
